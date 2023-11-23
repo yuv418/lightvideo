@@ -1210,6 +1210,7 @@ dependencies = [
  "dcv-color-primitives",
  "flexi_logger",
  "image",
+ "libc",
  "log",
  "openh264",
  "openh264-sys2",
@@ -1218,6 +1219,7 @@ dependencies = [
  "rtp",
  "screenshots",
  "spin_sleep",
+ "x11-dl",
  "xcb",
 ]
 
@@ -1695,6 +1697,17 @@ name = "windows_x86_64_msvc"
 version = "0.48.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed94fce61571a4006852b7389a063ab983c02eb1bb37b47f8272ce92d06d9538"
+
+[[package]]
+name = "x11-dl"
+version = "2.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "38735924fedd5314a6e548792904ed8c6de6636285cb9fec04d5b1db85c1516f"
+dependencies = [
+ "libc",
+ "once_cell",
+ "pkg-config",
+]
 
 [[package]]
 name = "xcb"

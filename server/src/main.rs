@@ -18,7 +18,7 @@ mod sender;
 const BITRATE: u32 = 100000;
 const FRAMERATE: f32 = 60.0;
 const BIND_ADDR: &'static str = "127.0.0.1:29878";
-const ITERATIONS: u32 = 10;
+const ITERATIONS: u32 = 100;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str("debug")?.start()?;
@@ -27,9 +27,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let screen = *Screen::all()?.get(1).expect("Expected a screen");
 
     // Screen size from screen is unreliable, so we'll get it from the capture instead.
-
     let mut capturer = LVLinuxCapturer::new(screen)?;
+
     // Capture a frame to figure out the frame size
+
     let (width, height) = match capturer.capture() {
         Ok(frame) => (frame.width(), frame.height()),
         Err(e) => {
@@ -38,17 +39,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
+    let sixty_fps = Duration::new(0, (1000000000. / 60.) as u32);
+
+    for i in 0..10 {
+        match capturer.capture() {
+            Ok(frame) => (frame.width(), frame.height()),
+            Err(e) => {
+                error!("captured frame was None! {:#?}", e);
+                panic!();
+            }
+        };
+        spin_sleep::sleep(sixty_fps);
+    }
+
+    // bad benchmark
+
     info!(
         "initialsing LVEncoder with screen size: {}x{}",
         width, height
     );
-
-    let encoder = LVEncoder::new(width, height, BITRATE, FRAMERATE)?;
+    let encoder = LVEncoder::new(
+        capturer.width as u32,
+        capturer.height as u32,
+        BITRATE,
+        FRAMERATE,
+    )?;
     let mut packager = LVPackager::new(encoder)?;
-
-    // bad benchmark
-
-    let sixty_fps = Duration::new(0, (1000000000. / 60.) as u32);
 
     let timer = Instant::now();
 

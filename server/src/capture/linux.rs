@@ -2,9 +2,17 @@ use anyhow::anyhow;
 use core::slice;
 use image::Rgb;
 use libc::{IPC_CREAT, IPC_PRIVATE, IPC_RMID};
-use log::debug;
+use log::{debug, error};
 use screenshots::Screen;
-use std::{os::raw::c_char, time::Instant};
+use std::{
+    os::raw::{c_char, c_ulong},
+    time::Instant,
+};
+use x11_dl::{
+    xlib::{self, Display, XImage, Xlib, ZPixmap},
+    xshm::{self, XShmSegmentInfo, Xext},
+};
+
 use xcb::{
     shm::{Attach, GetImage, Seg},
     x::{Drawable, ImageFormat, ImageOrder},
@@ -15,10 +23,18 @@ use super::LVCapturer;
 
 pub struct LVLinuxCapturer {
     conn: Connection,
-    get_image: GetImage,
-    bit_order: ImageOrder,
+    xlib: Xlib,
+    xshm: Xext,
+    dsp: *mut Display,
+    x_image: *mut XImage,
     bgr_buffer: *mut u8,
     bgr_buffer_len: usize,
+    x: i32,
+    y: i32,
+    root_window: c_ulong,
+    all_planes: u32,
+    pub width: u16,
+    pub height: u16,
 }
 
 impl LVLinuxCapturer {
@@ -31,57 +47,94 @@ impl LVLinuxCapturer {
 
         let buffer_size = width as usize * height as usize * 4 as usize;
 
-        // Setup shared memory segment
-        let (bgr_buffer, seg) = unsafe {
-            let shm_id = libc::shmget(IPC_PRIVATE, buffer_size, IPC_CREAT | 0o600) as u32;
+        let (xlib, xshm, dsp, x_image, bgr_buffer, root_window, all_planes) = unsafe {
+            let xlib = xlib::Xlib::open().unwrap();
+            let xshm = xshm::Xext::open().unwrap();
+
+            let dsp = (xlib.XOpenDisplay)(std::ptr::null());
+
+            if (xshm.XShmQueryExtension)(dsp) != 1 {
+                error!("XShmQueryExtension returns false!");
+                return Err(anyhow!("XShmQueryExtension returns false!").into());
+            }
+
+            let x_screen = (xlib.XDefaultScreen)(dsp);
+
+            // Setup shared memory
+            let shm_id = libc::shmget(IPC_PRIVATE, buffer_size, IPC_CREAT | 0o600);
             debug!("shm_id is {}", shm_id);
             // Map into process address space
-            let bgr_buffer = libc::shmat(shm_id as i32, std::ptr::null(), 0) as *mut u8;
+            let bgr_buffer = libc::shmat(shm_id, std::ptr::null(), 0) as *mut u8;
             debug!("bgr_buffer is {:p}", bgr_buffer);
-            libc::perror(std::ptr::null());
+            if bgr_buffer == std::ptr::null_mut() {
+                libc::perror(std::ptr::null());
+                return Err(anyhow!("could not map shared memory!").into());
+            }
 
             // Make sure that the shm is deallocated if the program crashes
-            libc::shmctl(shm_id as i32, IPC_RMID, std::ptr::null_mut());
+            libc::shmctl(shm_id, IPC_RMID, std::ptr::null_mut());
 
-            let seg: Seg = conn.generate_id();
-            let void_cookie = conn.send_request_checked(&Attach {
-                shmseg: seg,
+            let shm_segment_info = XShmSegmentInfo {
+                // Null/unset
+                shmseg: 0,
                 shmid: shm_id,
-                read_only: false,
-            });
-            conn.check_request(void_cookie)?;
+                shmaddr: bgr_buffer as *mut i8,
+                readOnly: 0,
+            };
 
-            (bgr_buffer, seg)
-        };
+            // Allocate image from XCreateImage
+            let x_image = (xshm.XShmCreateImage)(
+                dsp,
+                (xlib.XDefaultVisual)(dsp, x_screen),
+                (xlib.XDefaultDepth)(dsp, x_screen) as u32,
+                ZPixmap,
+                std::ptr::null_mut(),
+                &shm_segment_info as *const XShmSegmentInfo as *mut XShmSegmentInfo,
+                0,
+                0,
+            );
+            debug!("ximage is {:p}", x_image);
+            let mut x_image_mod = x_image.as_mut().unwrap();
+            x_image_mod.data = bgr_buffer as *mut i8;
+            x_image_mod.width = width as i32;
+            x_image_mod.height = height as i32;
 
-        let (get_image, bit_order) = {
-            let setup = conn.get_setup();
-            let x_screen = setup
-                .roots()
-                .nth(index as usize)
-                .ok_or_else(|| anyhow!("Could not find a screen."))?;
+            // Attach shm into x
+            (xshm.XShmAttach)(
+                dsp,
+                &shm_segment_info as *const XShmSegmentInfo as *mut XShmSegmentInfo,
+            );
+            (xlib.XSync)(dsp, 0);
+            debug!("xshmattach and xsync are done.");
+
+            // Get root window and all planes
+            let root_window = (xlib.XDefaultRootWindow)(dsp);
+            let all_planes = (xlib.XAllPlanes)() as u32;
+
             (
-                GetImage {
-                    drawable: Drawable::Window(x_screen.root()),
-                    x: (screen.display_info.x as f32 * screen.display_info.scale_factor) as i16,
-                    y: (screen.display_info.y as f32 * screen.display_info.scale_factor) as i16,
-                    width,
-                    height,
-                    plane_mask: u32::MAX,
-                    format: ImageFormat::ZPixmap as u8, // ZPixmap
-                    shmseg: seg,
-                    offset: 0,
-                },
-                setup.bitmap_format_bit_order(),
+                xlib,
+                xshm,
+                dsp,
+                x_image,
+                bgr_buffer,
+                root_window,
+                all_planes,
             )
         };
-
         Ok(Self {
+            xlib,
+            xshm,
+            dsp,
             conn,
-            bit_order,
-            get_image,
+            x_image,
+            x: screen.display_info.x,
+            y: screen.display_info.y,
             bgr_buffer,
             bgr_buffer_len: buffer_size,
+            width,
+            height,
+            root_window,
+            all_planes,
         })
     }
 }
@@ -92,23 +145,31 @@ impl LVCapturer for LVLinuxCapturer {
     // Adapted from https://github.com/nashaofu/screenshots-rs/blob/master/src/linux/xorg.rs
     fn capture(
         &mut self,
-    ) -> Result<image::ImageBuffer<Rgb<u8>, &[u8]>, Box<dyn std::error::Error>> {
+    ) -> Result<image::ImageBuffer<Rgb<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
         // I would really like to offload this screen to be elsewhere. It's a waste to do this every time.
 
-        let get_image_cookie = self.conn.send_request_unchecked(&(self.get_image));
+        debug!("bgr_buffer is {:p}", self.bgr_buffer);
+        debug!("self.x {} self.y {}", self.x, self.y);
         let time = Instant::now();
-        let get_image_reply = self.conn.wait_for_reply_unchecked(get_image_cookie);
-        let bytes = unsafe { slice::from_raw_parts(self.bgr_buffer, self.bgr_buffer_len) };
-        debug!("XShmGetImage took {:.4?}", time.elapsed());
-        // let depth = get_image_reply.depth();
-        // debug!("depth is {}", depth);
-
-        if self.bit_order == ImageOrder::LsbFirst {
-            debug!("bytes len {}", bytes.len());
-        } else {
-            unimplemented!("RGBA not implemented");
+        unsafe {
+            debug!("x_image is {:?}", *self.x_image);
+            (self.xshm.XShmGetImage)(
+                self.dsp,
+                self.root_window,
+                self.x_image,
+                self.x,
+                self.y,
+                self.all_planes,
+            );
         }
+        debug!("XShmGetImage elapsed {:.4?}", time.elapsed());
 
+        let vec = {
+            let bts = unsafe { slice::from_raw_parts(self.bgr_buffer, self.bgr_buffer_len) };
+            let mut v = vec![];
+            v.extend_from_slice(bts);
+            v
+        };
         /*for y in 0..height {
             for x in 0..width {
                 let dst_start_index = (((y * width) + x) * 3) as usize;
@@ -138,11 +199,9 @@ impl LVCapturer for LVLinuxCapturer {
             }
         }*/
 
-        Ok(image::ImageBuffer::from_raw(
-            self.get_image.width.into(),
-            self.get_image.height.into(),
-            bytes,
+        Ok(
+            image::ImageBuffer::from_vec(self.width as u32, self.height as u32, vec)
+                .ok_or(anyhow!("Does not fit in imgbuf"))?,
         )
-        .ok_or(anyhow!("Does not fit in imgbuf"))?)
     }
 }

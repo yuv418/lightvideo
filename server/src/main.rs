@@ -18,7 +18,7 @@ mod sender;
 const BITRATE: u32 = 100000;
 const FRAMERATE: f32 = 60.0;
 const BIND_ADDR: &'static str = "127.0.0.1:29878";
-const ITERATIONS: u32 = 10;
+const ITERATIONS: u32 = 100;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str("debug")?.start()?;
@@ -30,11 +30,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut capturer = LVLinuxCapturer::new(screen)?;
     // Capture a frame to figure out the frame size
-    let (width, height) = if let Ok(frame) = capturer.capture() {
-        (frame.width(), frame.height())
-    } else {
-        error!("captured frame was None!");
-        panic!()
+    let (width, height) = match capturer.capture() {
+        Ok(frame) => (frame.width(), frame.height()),
+        Err(e) => {
+            error!("captured frame was None! {:#?}", e);
+            panic!();
+        }
     };
 
     info!(
@@ -95,8 +96,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let send_avg = send_avg as f64 / ITERATIONS as f64;
 
     info!(
-        "\nSTATISTICS:\n\tcapture_avg: {}\n\tprocess_avg: {}\n\tsend_avg: {}",
-        capture_avg, process_avg, send_avg
+        "\nSTATISTICS:\n\tITERATIONS: {}\n\tcapture_avg: {}\n\tprocess_avg: {}\n\tsend_avg: {}\n\tTOTAL_AVG: {}",
+        ITERATIONS,
+        capture_avg,
+        process_avg,
+        send_avg,
+        capture_avg + process_avg + send_avg
     );
 
     Ok(())

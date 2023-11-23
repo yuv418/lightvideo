@@ -1,0 +1,33 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+# Capture
+xcb = "1"
+screenshots = "0.8.4"
+image = "0.24"
+
+# Encode
+dcv-color-primitives = "0.6"
+openh264 = { path = "../openh264-rs/openh264" , features = ["encoder"] }
+openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
+
+# Package
+rtp = "0.9.0"
+reed-solomon-novelpoly = "1.0.2"
+bytes = "1"
+ring = "0.17.5"
+
+# Logging
+log = "0.4"
+flexi_logger = "0.27"
+
+# Errors
+anyhow = "1"
+
+spin_sleep = "1"

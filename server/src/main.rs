@@ -18,7 +18,7 @@ mod sender;
 const BITRATE: u32 = 100000;
 const FRAMERATE: f32 = 60.0;
 const BIND_ADDR: &'static str = "127.0.0.1:29878";
-const ITERATIONS: u32 = 100;
+const ITERATIONS: u32 = 10;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str("debug")?.start()?;

@@ -14,7 +14,6 @@ use xcb::{
 use super::LVCapturer;
 
 pub struct LVLinuxCapturer {
-    screen: Screen,
     conn: Connection,
     get_image: GetImage,
     bit_order: ImageOrder,
@@ -78,7 +77,6 @@ impl LVLinuxCapturer {
         };
 
         Ok(Self {
-            screen,
             conn,
             bit_order,
             get_image,
@@ -104,11 +102,6 @@ impl LVCapturer for LVLinuxCapturer {
         debug!("XShmGetImage took {:.4?}", time.elapsed());
         // let depth = get_image_reply.depth();
         // debug!("depth is {}", depth);
-
-        let _width =
-            (self.screen.display_info.width as f32 * self.screen.display_info.scale_factor) as u32;
-        let _height =
-            (self.screen.display_info.height as f32 * self.screen.display_info.scale_factor) as u32;
 
         if self.bit_order == ImageOrder::LsbFirst {
             debug!("bytes len {}", bytes.len());
@@ -146,8 +139,8 @@ impl LVCapturer for LVLinuxCapturer {
         }*/
 
         Ok(image::ImageBuffer::from_raw(
-            self.screen.display_info.width,
-            self.screen.display_info.height,
+            self.get_image.width.into(),
+            self.get_image.height.into(),
             bytes,
         )
         .ok_or(anyhow!("Does not fit in imgbuf"))?)

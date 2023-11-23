@@ -109,35 +109,6 @@ impl LVCapturer for LVLinuxCapturer {
             unimplemented!("RGBA not implemented");
         }
 
-        /*for y in 0..height {
-            for x in 0..width {
-                let dst_start_index = (((y * width) + x) * 3) as usize;
-                let src_start_index = (((y * width) + x) * 4) as usize;
-                // debug!("bgra vec capacity is {}", self.bgra_vec.capacity());
-                // alpha
-                self.bgra_vec[dst_start_index + 3] = 255;
-
-                // extract_bgra
-                if depth == 24 {
-                    if self.bit_order == ImageOrder::LsbFirst {
-                        // debug!("native representation is bgr");
-                        // how 2 make faster?
-                        self.bgra_vec[src_start_index] = bytes[dst_start_index];
-                        self.bgra_vec[src_start_index + 1] = bytes[dst_start_index + 1];
-                        self.bgra_vec[src_start_index + 2] = bytes[dst_start_index + 2];
-                    } else {
-                        // debug!("native representation is rgb");
-                        // how 2 make faster?
-                        self.bgra_vec[src_start_index] = bytes[dst_start_index + 2];
-                        self.bgra_vec[src_start_index + 1] = bytes[dst_start_index + 1];
-                        self.bgra_vec[src_start_index + 2] = bytes[dst_start_index];
-                    }
-                } else {
-                    unimplemented!()
-                }
-            }
-        }*/
-
         Ok(image::ImageBuffer::from_raw(
             self.get_image.width.into(),
             self.get_image.height.into(),

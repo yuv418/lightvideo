@@ -1,9 +1,9 @@
 use anyhow::anyhow;
-use image::{Rgb, Rgba};
+use image::{Rgb};
 use log::debug;
 use screenshots::Screen;
 use xcb::{
-    x::{Drawable, GetImage, ImageFormat, ImageOrder, Screen as XScreen},
+    x::{Drawable, GetImage, ImageFormat, ImageOrder},
     Connection,
 };
 
@@ -72,9 +72,9 @@ impl LVCapturer for LVLinuxCapturer {
         let bytes = get_image_reply.data();
         let depth = get_image_reply.depth();
 
-        let width =
+        let _width =
             (self.screen.display_info.width as f32 * self.screen.display_info.scale_factor) as u32;
-        let height =
+        let _height =
             (self.screen.display_info.height as f32 * self.screen.display_info.scale_factor) as u32;
 
         if self.bit_order == ImageOrder::LsbFirst {

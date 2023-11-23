@@ -1,13 +1,10 @@
-use std::{collections::VecDeque, sync::Arc, time::Instant};
+use std::{collections::VecDeque, time::Instant};
 
 use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
-use image::{DynamicImage, ImageBuffer, Rgb, Rgba, RgbaImage};
-use log::{debug, info};
-use openh264::{
-    formats::{YUVBuffer, YUVSource},
-    Error as OpenH264Error,
-};
+use image::{ImageBuffer, Rgb};
+use log::debug;
+use openh264::formats::{YUVBuffer, YUVSource};
 use rtp::{codecs::h264::H264Payloader, packetizer::Payloader};
 
 use crate::encoder::LVEncoder;
@@ -77,15 +74,20 @@ impl LVPackager {
             buffer.len(),
         );
 
+        let src_strides: &[usize] = &[4 * (buffer.width() as usize)];
+
+        let (mut y_slice, uv_slice) = self.yuv_buffer.yuv.split_at_mut(sizes[0]);
+        let (mut u_slice, mut v_slice) = uv_slice.split_at_mut(sizes[1]);
+
         convert_image(
             buffer.width(),
             buffer.height(),
             &src_fmt,
-            None,
+            Some(src_strides),
             &[&buffer.into_raw()],
             &dst_fmt,
             None,
-            &mut [&mut self.yuv_buffer.yuv],
+            &mut [&mut y_slice, &mut u_slice, &mut v_slice],
         )?;
 
         let pre_enc = Instant::now();

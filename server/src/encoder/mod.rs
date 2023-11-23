@@ -1,13 +1,13 @@
-use std::{os::raw::c_int, ptr::addr_of_mut};
+use std::{os::raw::c_int};
 
 use openh264::{
-    encoder::{EncodedBitStream, Encoder, EncoderConfig},
+    encoder::{EncodedBitStream, Encoder},
     formats::YUVSource,
     Error as OpenH264Error, Timestamp,
 };
 
 use openh264_sys2::{
-    SEncParamExt, ENCODER_OPTION_DATAFORMAT, ENCODER_OPTION_TRACE_LEVEL, LOW_COMPLEXITY,
+    SEncParamExt, LOW_COMPLEXITY,
     RC_BITRATE_MODE,
 };
 
@@ -45,12 +45,12 @@ impl LVEncoder {
         params.iMinQp = 21;
         params.iMinQp = 35;
 
-        let mut true_val = true;
-        let mut false_val = false;
+        let _true_val = true;
+        let _false_val = false;
 
         unsafe {
             let mut encoder = Encoder::with_raw_config(params)?;
-            let raw_api = encoder.raw_api();
+            let _raw_api = encoder.raw_api();
             // raw_api.set_option(ENCODER_OPTION_TRACE_LEVEL, addr_of_mut!(false_val).cast());
             // raw_api.set_option(ENCODER_OPTION_DATAFORMAT, addr_of_mut!(true_val).cast());
             Ok(LVEncoder {

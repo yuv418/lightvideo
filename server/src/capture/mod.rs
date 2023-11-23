@@ -1,6 +1,6 @@
 pub mod linux;
 
-use image::{Rgb, RgbaImage};
+use image::{Rgb};
 
 pub trait LVCapturer {
     fn capture(&mut self)

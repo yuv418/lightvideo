@@ -1,1 +1,4 @@
 test_frames/
+flamegraph.svg
+perf*
+stacks.folded

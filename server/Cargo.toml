@@ -6,9 +6,13 @@ edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+
+# Build some dependencies so they are faster
+
+
 [dependencies]
 # Capture
-xcb = "1"
+xcb = { version = "1", features = ["shm"] }
 screenshots = "0.8.4"
 image = "0.24"
 
@@ -31,3 +35,4 @@ flexi_logger = "0.27"
 anyhow = "1"
 
 spin_sleep = "1"
+

@@ -1,5 +1,5 @@
 use anyhow::anyhow;
-use image::{Rgb};
+use image::Rgb;
 use log::debug;
 use screenshots::Screen;
 use xcb::{
@@ -81,6 +81,8 @@ impl LVCapturer for LVLinuxCapturer {
             debug!("bytes len {}", bytes.len());
             debug!("bgr_vec capacity {}", self.bgr_vec.capacity());
             self.bgr_vec.clone_from_slice(bytes);
+        } else {
+            unimplemented!("RGBA not implemented");
         }
 
         /*for y in 0..height {

@@ -47,7 +47,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // bad benchmark
 
-    let sixty_fps = Duration::new(0, 166666666);
+    let sixty_fps = Duration::new(0, (1000000000. / 60.) as u32);
 
     let timer = Instant::now();
 

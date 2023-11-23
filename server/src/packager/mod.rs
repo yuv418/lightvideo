@@ -46,6 +46,7 @@ impl LVPackager {
         buffer: ImageBuffer<Rgb<u8>, &[u8]>,
         timestamp: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let pre_enc = Instant::now();
         // Convert RGBA8 to YUV420
         let src_fmt = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::Bgra,
@@ -54,7 +55,7 @@ impl LVPackager {
         };
         let dst_fmt = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::I420,
-            color_space: ColorSpace::Bt601FR,
+            color_space: ColorSpace::Bt601,
             num_planes: 3,
         };
 
@@ -89,12 +90,14 @@ impl LVPackager {
             None,
             &mut [&mut y_slice, &mut u_slice, &mut v_slice],
         )?;
+        debug!("convert image sequence is {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
         let bit_stream = self.encoder.encode_frame(&self.yuv_buffer, timestamp)?;
         debug!("encode_frame elapsed time: {:.4?}", pre_enc.elapsed());
         debug!("h264 bit stream layer count is {}", bit_stream.num_layers());
 
+        let pre_enc = Instant::now();
         // Delete the old packet.
         self.h264_bitstream_writer.get_mut().clear();
 
@@ -107,22 +110,27 @@ impl LVPackager {
             "bitstream buffer len after write is {}",
             self.h264_bitstream_writer.get_ref().len(),
         );
+        debug!("bitstream buffer write: {:.4?}", pre_enc.elapsed());
 
         // Extract RTP and put in queue from the bytes
         // The split will be dropped at the end of this function, so when we clear the bitstream writer and write to it later, it will use the whole buffer.
+        let pre_enc = Instant::now();
         let unpacketized_payload: Bytes = Bytes::from(self.h264_bitstream_writer.get_mut().split());
         debug!("unpacketized_payload len is {}", unpacketized_payload.len());
 
         let payloads = self
             .rtp_packet_builder
             .payload(MTU_SIZE, &unpacketized_payload)?;
+        debug!("packetization: {:.4?}", pre_enc.elapsed());
 
+        let pre_enc = Instant::now();
         let mut packet_count = 0;
         for payload in payloads {
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }
         debug!("wrote {} RTP packets into queue", packet_count);
+        debug!("queuing: {:.4?}", pre_enc.elapsed());
 
         Ok(())
     }

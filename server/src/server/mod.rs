@@ -1,6 +1,6 @@
 use flume::{Receiver, Sender};
 use image::{ImageBuffer, Rgb};
-use log::{debug, error};
+use log::{debug, error, info};
 use screenshots::Screen;
 use std::{
     net::UdpSocket,
@@ -85,13 +85,16 @@ impl Server {
         &self,
         frame_recv: Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let socket = UdpSocket::bind(self.addr.clone()).expect("Failed to make socket");
+        let socket = UdpSocket::bind(&self.addr).expect("Failed to make socket");
         let encoder = LVEncoder::new(self.width, self.height, self.bitrate, self.fps as f32)
             .expect("Failed to make encoder");
         let mut packager = LVPackager::new(encoder).expect("Failed to make packager");
 
+        info!("server bound to {}", self.addr);
+
         let timer = Instant::now();
 
+        // TODO: Add statistics
         loop {
             match frame_recv.recv() {
                 Ok(frame) => {

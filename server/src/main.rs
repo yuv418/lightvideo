@@ -8,7 +8,7 @@ mod packager;
 mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("debug")?.start()?;
+    Logger::try_with_str("info")?.start()?;
 
     match std::env::args().nth(1).as_deref() {
         Some("bench") => benchmark::bench(),

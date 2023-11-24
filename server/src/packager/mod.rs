@@ -5,11 +5,19 @@ use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFor
 use image::{ImageBuffer, Rgb};
 use log::debug;
 use openh264::formats::{YUVBuffer, YUVSource};
-use rtp::{codecs::h264::H264Payloader, packetizer::Payloader};
+use rand::Rng;
+use rtp::{
+    codecs::h264::H264Payloader,
+    header::Header,
+    packet::Packet,
+    packetizer::{Packetizer, Payloader},
+    sequence::new_random_sequencer,
+};
 
 use crate::encoder::LVEncoder;
 
 const MTU_SIZE: usize = 1200;
+const SAMPLE_RATE: u32 = 90000;
 
 // TODO update the error handling
 
@@ -19,24 +27,34 @@ pub struct LVPackager {
     h264_bitstream_writer: Writer<BytesMut>,
     yuv_buffer: YUVBuffer,
 
-    rtp_packet_builder: H264Payloader,
-
     // TODO: Can we minimize the number of heap allocations with this?
-    rtp_queue: VecDeque<Bytes>,
+    rtp_queue: VecDeque<Packet>,
+    packetizer: Box<dyn Packetizer>,
+    fps: u32,
 }
 
 //
 impl LVPackager {
-    pub fn new(encoder: LVEncoder) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(encoder: LVEncoder, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
         let width = encoder.width() as usize;
         let height = encoder.height() as usize;
+        let mut rand = rand::thread_rng();
+
         Ok(Self {
             encoder,
             // TODO: Default??
             h264_bitstream_writer: BytesMut::new().writer(),
-            rtp_packet_builder: H264Payloader::default(),
             rtp_queue: VecDeque::new(),
             yuv_buffer: YUVBuffer::new(width, height),
+            packetizer: Box::new(rtp::packetizer::new_packetizer(
+                MTU_SIZE,
+                96,
+                rand.gen_range(0..u32::MAX),
+                Box::new(H264Payloader::default()),
+                Box::new(new_random_sequencer()),
+                SAMPLE_RATE,
+            )),
+            fps,
         })
     }
 
@@ -119,13 +137,14 @@ impl LVPackager {
         debug!("unpacketized_payload len is {}", unpacketized_payload.len());
 
         let payloads = self
-            .rtp_packet_builder
-            .payload(MTU_SIZE, &unpacketized_payload)?;
+            .packetizer
+            .packetize(&unpacketized_payload, SAMPLE_RATE / self.fps)?;
         debug!("packetization: {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
         let mut packet_count = 0;
         for payload in payloads {
+            // Marshal into RTP.
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }
@@ -135,8 +154,8 @@ impl LVPackager {
         Ok(())
     }
     // Get the next RTP packet to send over the network
-    pub fn pop_rtp(&mut self) -> Option<Bytes> {
-        self.rtp_queue.pop_front()
+    pub fn pop_rtp(&mut self) -> Option<Packet> {
+        self.rtp_queue.pop_back()
     }
 
     // pub fn encrypt();

@@ -1,3 +1,4 @@
+use bytes::{BufMut, BytesMut};
 use flume::{Receiver, Sender};
 use image::{ImageBuffer, Rgb};
 use log::{debug, error, info};
@@ -7,6 +8,7 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
+use webrtc_util::{Marshal, MarshalSize};
 
 use crate::{
     capture::{linux::LVLinuxCapturer, LVCapturer},
@@ -15,7 +17,8 @@ use crate::{
 };
 
 pub struct Server {
-    addr: String,
+    bind_addr: String,
+    target_addr: String,
     fps: u32,
     screen_no: usize,
     width: u32,
@@ -25,7 +28,8 @@ pub struct Server {
 
 impl Server {
     pub fn new(
-        addr: &str,
+        bind_addr: &str,
+        target_addr: &str,
         fps: u32,
         screen_no: usize,
         width: u32,
@@ -33,7 +37,8 @@ impl Server {
         bitrate: u32,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
-            addr: addr.to_owned(),
+            bind_addr: bind_addr.to_owned(),
+            target_addr: target_addr.to_owned(),
             fps,
             screen_no,
             width,
@@ -85,12 +90,13 @@ impl Server {
         &self,
         frame_recv: Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let socket = UdpSocket::bind(&self.addr).expect("Failed to make socket");
+        let socket = UdpSocket::bind(&self.bind_addr).expect("Failed to make socket");
         let encoder = LVEncoder::new(self.width, self.height, self.bitrate, self.fps as f32)
             .expect("Failed to make encoder");
-        let mut packager = LVPackager::new(encoder).expect("Failed to make packager");
+        let mut packager = LVPackager::new(encoder, self.fps).expect("Failed to make packager");
+        let mut rtp_pkt = BytesMut::new();
 
-        info!("server bound to {}", self.addr);
+        info!("server bound to {}", self.bind_addr);
 
         let timer = Instant::now();
 
@@ -106,12 +112,24 @@ impl Server {
                 Err(e) => error!("frame_recv returned {:?}", e),
             }
 
+            let loop_pkg = Instant::now();
             while let Some(rtp) = packager.pop_rtp() {
-                match socket.send_to(&rtp, "127.0.0.1:22879") {
+                rtp_pkt.resize(rtp.marshal_size(), 0);
+                debug!("rtp_pkt capacity {}", rtp_pkt.capacity());
+                debug!("rtp_pkt len {}", rtp_pkt.len());
+                debug!(
+                    "rtp_pkt remaining_mut before {} and marshal_size {}",
+                    (&mut rtp_pkt).remaining_mut(),
+                    rtp.marshal_size()
+                );
+                debug!("rtp_pkt remaining_mut after {}", rtp_pkt.remaining_mut());
+                rtp.marshal_to(&mut rtp_pkt)?;
+                match socket.send_to(&rtp_pkt, &self.target_addr) {
                     Ok(bytes) => debug!("sent {} bytes to addr", bytes),
                     Err(e) => error!("send_to returned {:?}", e),
                 }
             }
+            debug!("packet sending elapsed {:.4?}", loop_pkg.elapsed());
         }
 
         Ok(())

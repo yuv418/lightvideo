@@ -158,6 +158,16 @@ dependencies = [
 [[package]]
 name = "client"
 version = "0.1.0"
+dependencies = [
+ "bytes",
+ "flexi_logger",
+ "log",
+ "openh264",
+ "openh264-sys2",
+ "reed-solomon-novelpoly",
+ "rtp",
+ "webrtc-util",
+]
 
 [[package]]
 name = "color_quant"
@@ -1241,11 +1251,13 @@ dependencies = [
  "log",
  "openh264",
  "openh264-sys2",
+ "rand",
  "reed-solomon-novelpoly",
  "ring",
  "rtp",
  "screenshots",
  "spin_sleep",
+ "webrtc-util",
  "xcb",
 ]
 

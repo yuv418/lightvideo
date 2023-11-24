@@ -24,9 +24,11 @@ openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
 
 # Package
 rtp = "0.9.0"
+webrtc-util = "0.8"
 reed-solomon-novelpoly = "1.0.2"
 bytes = "1"
 ring = "0.17.5"
+rand = "0.8"
 
 # Logging
 log = "0.4"

@@ -1,4 +1,4 @@
-use std::{os::raw::c_int};
+use std::os::raw::c_int;
 
 use openh264::{
     encoder::{EncodedBitStream, Encoder},
@@ -6,10 +6,7 @@ use openh264::{
     Error as OpenH264Error, Timestamp,
 };
 
-use openh264_sys2::{
-    SEncParamExt, LOW_COMPLEXITY,
-    RC_BITRATE_MODE,
-};
+use openh264_sys2::{SEncParamExt, LOW_COMPLEXITY, RC_BITRATE_MODE};
 
 pub struct LVEncoder {
     encoder: Encoder,

@@ -8,8 +8,9 @@ use crate::encoder::LVEncoder;
 use crate::packager::LVPackager;
 use log::{debug, error, info};
 use screenshots::Screen;
+use webrtc_util::{Marshal, MarshalSize};
 
-const BITRATE: u32 = 100000;
+const BITRATE: u32 = 250000;
 const FRAMERATE: f32 = 60.0;
 const BIND_ADDR: &'static str = "127.0.0.1:29878";
 const ITERATIONS: u32 = 100;
@@ -36,7 +37,7 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     let encoder = LVEncoder::new(width, height, BITRATE, FRAMERATE)?;
-    let mut packager = LVPackager::new(encoder)?;
+    let mut packager = LVPackager::new(encoder, FRAMERATE as u32)?;
 
     // bad benchmark
 
@@ -48,6 +49,8 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
     let mut capture_avg: u128 = 0;
     let mut process_avg: u128 = 0;
     let mut send_avg: u128 = 0;
+
+    let mut rtp_pkt = vec![];
 
     for i in 0..ITERATIONS {
         let before = Instant::now();
@@ -70,7 +73,10 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
             // Send frame over network
             let before = Instant::now();
             while let Some(data) = packager.pop_rtp() {
-                let bytes = socket.send_to(&data, "127.0.0.1:22879")?;
+                // Don't always heap allocate
+                rtp_pkt.resize(data.marshal_size(), 0);
+                data.marshal_to(&mut rtp_pkt)?;
+                let bytes = socket.send_to(&rtp_pkt, "127.0.0.1:22879")?;
                 debug!("sent {} bytes to addr", bytes);
             }
             let elapsed = before.elapsed();

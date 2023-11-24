@@ -43,7 +43,7 @@ impl LVPackager {
     // Encode frame and add to RTP queue
     pub fn process_frame(
         &mut self,
-        buffer: ImageBuffer<Rgb<u8>, &[u8]>,
+        buffer: ImageBuffer<Rgb<u8>, Vec<u8>>,
         timestamp: u64,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pre_enc = Instant::now();

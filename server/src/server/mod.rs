@@ -1,0 +1,116 @@
+use flume::{Receiver, Sender};
+use image::{ImageBuffer, Rgb};
+use log::{debug, error};
+use screenshots::Screen;
+use std::{
+    net::UdpSocket,
+    thread,
+    time::{Duration, Instant},
+};
+
+use crate::{
+    capture::{linux::LVLinuxCapturer, LVCapturer},
+    encoder::LVEncoder,
+    packager::LVPackager,
+};
+
+pub struct Server {
+    addr: String,
+    fps: u32,
+    screen_no: usize,
+    width: u32,
+    height: u32,
+    bitrate: u32,
+}
+
+impl Server {
+    pub fn new(
+        addr: &str,
+        fps: u32,
+        screen_no: usize,
+        width: u32,
+        height: u32,
+        bitrate: u32,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {
+            addr: addr.to_owned(),
+            fps,
+            screen_no,
+            width,
+            height,
+            bitrate,
+        })
+    }
+
+    pub fn begin(&self) -> Result<(), Box<dyn std::error::Error>> {
+        let (frame_push, frame_recv) = flume::bounded(2);
+        self.start_capture_thread(frame_push)?;
+        self.start_send_loop(frame_recv)?;
+        Ok(())
+    }
+
+    pub fn start_capture_thread(
+        &self,
+        frame_push: Sender<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let sixty_fps = Duration::new(0, (1000000000. / self.fps as f32) as u32);
+        let screen = *Screen::all()?
+            .get(self.screen_no)
+            .expect("Expected a screen");
+
+        thread::spawn(move || {
+            let mut capturer = LVLinuxCapturer::new(screen).expect("Could not start capturer");
+            loop {
+                match capturer.capture() {
+                    Ok(frame) => {
+                        // Throw the stuff into the mpmc
+                        match frame_push.try_send(frame) {
+                            Err(e) => error!("could not push to q {:?}", e),
+                            _ => {}
+                        }
+                    }
+                    Err(e) => {
+                        error!("captured frame was None! {:#?}", e);
+                    }
+                }
+
+                spin_sleep::sleep(sixty_fps);
+            }
+        });
+
+        Ok(())
+    }
+
+    pub fn start_send_loop(
+        &self,
+        frame_recv: Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let socket = UdpSocket::bind(self.addr.clone()).expect("Failed to make socket");
+        let encoder = LVEncoder::new(self.width, self.height, self.bitrate, self.fps as f32)
+            .expect("Failed to make encoder");
+        let mut packager = LVPackager::new(encoder).expect("Failed to make packager");
+
+        let timer = Instant::now();
+
+        loop {
+            match frame_recv.recv() {
+                Ok(frame) => {
+                    match packager.process_frame(frame, timer.elapsed().as_millis() as u64) {
+                        Ok(_) => {}
+                        Err(e) => error!("process_frame returned {:?}", e),
+                    }
+                }
+                Err(e) => error!("frame_recv returned {:?}", e),
+            }
+
+            while let Some(rtp) = packager.pop_rtp() {
+                match socket.send_to(&rtp, "127.0.0.1:22879") {
+                    Ok(bytes) => debug!("sent {} bytes to addr", bytes),
+                    Err(e) => error!("send_to returned {:?}", e),
+                }
+            }
+        }
+
+        Ok(())
+    }
+}

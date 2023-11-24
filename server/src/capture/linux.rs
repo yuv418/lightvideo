@@ -38,7 +38,10 @@ impl LVLinuxCapturer {
             // Map into process address space
             let bgr_buffer = libc::shmat(shm_id as i32, std::ptr::null(), 0) as *mut u8;
             debug!("bgr_buffer is {:p}", bgr_buffer);
-            libc::perror(std::ptr::null());
+            if bgr_buffer == std::ptr::null_mut() {
+                libc::perror(std::ptr::null());
+                return Err(anyhow!("failed to open shared memory buffer").into());
+            }
 
             // Make sure that the shm is deallocated if the program crashes
             libc::shmctl(shm_id as i32, IPC_RMID, std::ptr::null_mut());
@@ -92,16 +95,14 @@ impl LVCapturer for LVLinuxCapturer {
     // Adapted from https://github.com/nashaofu/screenshots-rs/blob/master/src/linux/xorg.rs
     fn capture(
         &mut self,
-    ) -> Result<image::ImageBuffer<Rgb<u8>, &[u8]>, Box<dyn std::error::Error>> {
+    ) -> Result<image::ImageBuffer<Rgb<u8>, Vec<u8>>, Box<dyn std::error::Error>> {
         // I would really like to offload this screen to be elsewhere. It's a waste to do this every time.
 
-        let get_image_cookie = self.conn.send_request_unchecked(&(self.get_image));
+        let get_image_cookie = self.conn.send_request(&(self.get_image));
         let time = Instant::now();
-        let get_image_reply = self.conn.wait_for_reply_unchecked(get_image_cookie);
+        let _ = self.conn.wait_for_reply(get_image_cookie)?;
         let bytes = unsafe { slice::from_raw_parts(self.bgr_buffer, self.bgr_buffer_len) };
         debug!("XShmGetImage took {:.4?}", time.elapsed());
-        // let depth = get_image_reply.depth();
-        // debug!("depth is {}", depth);
 
         if self.bit_order == ImageOrder::LsbFirst {
             debug!("bytes len {}", bytes.len());
@@ -109,10 +110,10 @@ impl LVCapturer for LVLinuxCapturer {
             unimplemented!("RGBA not implemented");
         }
 
-        Ok(image::ImageBuffer::from_raw(
+        Ok(image::ImageBuffer::from_vec(
             self.get_image.width.into(),
             self.get_image.height.into(),
-            bytes,
+            bytes.to_vec(),
         )
         .ok_or(anyhow!("Does not fit in imgbuf"))?)
     }

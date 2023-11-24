@@ -37,3 +37,5 @@ anyhow = "1"
 
 spin_sleep = "1"
 
+# Multithreading stuff
+flume = "0.11"

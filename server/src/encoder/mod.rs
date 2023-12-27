@@ -26,13 +26,12 @@ impl LVEncoder {
 
         params.iPicWidth = width as c_int;
         params.iPicHeight = height as c_int;
-        params.iRCMode = RC_BITRATE_MODE;
+        // params.iRCMode = RC_BITRATE_MODE;
         params.iComplexityMode = LOW_COMPLEXITY;
         params.bEnableFrameSkip = false;
         params.iTargetBitrate = bitrate as c_int;
-        params.bEnableDenoise = false;
+        params.bEnableDenoise = true;
         params.fMaxFrameRate = framerate;
-        params.bEnableAdaptiveQuant = false;
         params.bEnableAdaptiveQuant = false;
         params.iMultipleThreadIdc = 8;
         params.iEntropyCodingModeFlag = 0;

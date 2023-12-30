@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if is_partition_head {
                     // Decode and clear buffer
                     if !buffer.is_empty() {
-                        match decoder.decode(packet.payload.as_ref()) {
+                        match decoder.decode(&buffer) {
                             Ok(yuv) => {
                                 h264_data = yuv;
                                 debug!("h264_data {:?}", h264_data);

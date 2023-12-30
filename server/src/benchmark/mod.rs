@@ -17,7 +17,7 @@ const ITERATIONS: u32 = 100;
 
 pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
     let socket = UdpSocket::bind(BIND_ADDR)?;
-    let screen = *Screen::all()?.get(1).expect("Expected a screen");
+    let screen = *Screen::all()?.get(0).expect("Expected a screen");
 
     // Screen size from screen is unreliable, so we'll get it from the capture instead.
 

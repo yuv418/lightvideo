@@ -6,8 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-openh264 = { path = "../openh264-rs/openh264" , features = ["decoder"] }
-openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
 
 # Parsing
 bytes = "1"
@@ -18,3 +16,8 @@ reed-solomon-novelpoly = "1.0.2"
 # Logging
 log = "0.4"
 flexi_logger = "0.27"
+
+# Decoding
+dcv-color-primitives = "0.6"
+openh264 = { path = "../openh264-rs/openh264" , features = ["decoder"] }
+openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }

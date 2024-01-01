@@ -78,6 +78,7 @@ impl LVPackager {
         };
 
         let sizes: &mut [usize] = &mut [0usize; 3];
+        debug!("frame width {} height {}", buffer.width(), buffer.height());
         get_buffers_size(buffer.width(), buffer.height(), &dst_fmt, None, sizes)?;
         debug!(
             "{:?} and yuv buffer capacity is {}",

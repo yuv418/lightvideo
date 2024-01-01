@@ -160,6 +160,7 @@ name = "client"
 version = "0.1.0"
 dependencies = [
  "bytes",
+ "dcv-color-primitives",
  "flexi_logger",
  "log",
  "openh264",

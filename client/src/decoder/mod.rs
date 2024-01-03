@@ -32,6 +32,8 @@ impl LVDecoder {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
 
+        let mut rtp_prev_timestamp: u32 = 0;
+
         let src_format = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::I420,
             color_space: ColorSpace::Bt601FR,
@@ -52,6 +54,17 @@ impl LVDecoder {
             let mut bytes = Bytes::copy_from_slice(&buf[..amt]);
             // turn into packet
             let packet = Packet::unmarshal(&mut bytes)?;
+
+            debug!("packet timestamp {}", packet.header.timestamp);
+
+            if rtp_prev_timestamp > packet.header.timestamp {
+                warn!(
+                    "packet out of order: current {} prev {}",
+                    packet.header.timestamp, rtp_prev_timestamp
+                );
+            }
+
+            rtp_prev_timestamp = packet.header.timestamp;
 
             let is_partition_head = pkt.is_partition_head(&packet.payload);
             debug!("is partition head {}", is_partition_head);
@@ -125,7 +138,10 @@ impl LVDecoder {
                             // debug!("h264_data {:?}", h264_data);
                         }
                         Err(e) => {
-                            error!("Failed to decode pkt {:?}", e)
+                            error!("Failed to decode pkt {}", e);
+                            if let Some(bt) = e.backtrace() {
+                                error!("backtrace: {}", bt);
+                            }
                         }
                     }
                     buffer.clear();

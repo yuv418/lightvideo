@@ -37,6 +37,7 @@ impl LVEncoder {
         params.iEntropyCodingModeFlag = 0;
         // GOP Size
         params.uiIntraPeriod = 120;
+
         // Quantization parameters?
         params.iMinQp = 21;
         params.iMinQp = 35;

@@ -90,6 +90,7 @@ impl Server {
         &self,
         frame_recv: Receiver<ImageBuffer<Rgb<u8>, Vec<u8>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        info!("bind addr {}", self.bind_addr);
         let socket = UdpSocket::bind(&self.bind_addr).expect("Failed to make socket");
         let encoder = LVEncoder::new(self.width, self.height, self.bitrate, self.fps as f32)
             .expect("Failed to make encoder");

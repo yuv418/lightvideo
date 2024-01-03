@@ -116,6 +116,8 @@ impl LVPackager {
         debug!("encode_frame elapsed time: {:.4?}", pre_enc.elapsed());
         debug!("h264 bit stream layer count is {}", bit_stream.num_layers());
 
+        debug!("bit stream is {:?}", bit_stream.to_vec());
+
         let pre_enc = Instant::now();
         // Delete the old packet.
         self.h264_bitstream_writer.get_mut().clear();
@@ -146,6 +148,7 @@ impl LVPackager {
         let mut packet_count = 0;
         for payload in payloads {
             // Marshal into RTP.
+            debug!("packet payload data: {:?}", &payload.payload.as_ref());
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }

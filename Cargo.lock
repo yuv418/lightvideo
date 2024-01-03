@@ -352,6 +352,7 @@ dependencies = [
  "pollster",
  "reed-solomon-novelpoly",
  "rtp",
+ "socket2",
  "webrtc-util",
  "wgpu",
  "winit",

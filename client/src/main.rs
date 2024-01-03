@@ -13,7 +13,7 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("info, wgpu=info")?.start()?;
+    Logger::try_with_str("debug, wgpu=info")?.start()?;
 
     // Bind value
     match std::env::args().nth(1) {

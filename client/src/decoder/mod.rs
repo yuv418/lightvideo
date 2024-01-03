@@ -6,6 +6,7 @@ use openh264::{
     formats::YUVSource,
 };
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
+use socket2::Socket;
 use std::{net::UdpSocket, sync::Arc, time::Instant};
 use webrtc_util::Unmarshal;
 
@@ -23,11 +24,18 @@ impl LVDecoder {
 
     pub fn decode(&mut self, addr: &str) -> Result<(), Box<dyn std::error::Error>> {
         let sock = UdpSocket::bind(addr)?;
+        let sock = Socket::from(sock);
+
+        debug!("current recv size {:?}", sock.recv_buffer_size());
+        sock.set_recv_buffer_size(393216)?;
+        debug!("new recv size {:?}", sock.recv_buffer_size());
+
+        let sock: UdpSocket = sock.into();
 
         let mut buf = [0; 1200];
         let mut pkt = H264Packet::default();
         let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut buffer = BytesMut::new();
+        let mut buffer = Vec::new();
 
         let mut width: u32 = 0;
         let mut height: u32 = 0;
@@ -144,12 +152,30 @@ impl LVDecoder {
                             }
                         }
                     }
-                    buffer.clear();
                 } else {
                     warn!("skipping decode empty packet");
                 }
+                // if there's an empty packet and a boundary we need to clear the buffer. In both cases the buffer must be cleared.
+                buffer.clear();
             }
-            buffer.put(pkt.depacketize(&packet.payload)?);
+            let depacketized_payload = pkt.depacketize(&packet.payload)?;
+            if depacketized_payload.is_empty() {
+                debug!(
+                    "depacketized payload is empty! payload is {:?}",
+                    &packet.payload[..]
+                );
+            } else {
+                debug!(
+                    "depacketized payload is NOT empty {:?}",
+                    &depacketized_payload[..]
+                );
+
+                debug!(
+                    "payload for NONEMPTY depacketized is {:?}",
+                    &packet.payload[..]
+                );
+            }
+            buffer.extend_from_slice(&depacketized_payload);
 
             // debug!("packet {:#?}", packet);
 

@@ -13,7 +13,7 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("debug")?.start()?;
+    Logger::try_with_str("info")?.start()?;
 
     // Bind value
     match std::env::args().nth(1) {

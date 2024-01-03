@@ -21,3 +21,14 @@ flexi_logger = "0.27"
 dcv-color-primitives = "0.6"
 openh264 = { path = "../openh264-rs/openh264" , features = ["decoder"] }
 openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
+
+
+# GUI
+winit = {version ="0.29", features = ["rwh_05"]}
+wgpu = "0.18"
+pollster = "0.3"
+bytemuck = { version = "1.14", features = ["derive"] }
+
+# Multithreading stuff
+flume = "0.11"
+parking_lot = "0.12"

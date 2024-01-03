@@ -4,16 +4,30 @@ use parking_lot::{
     RawRwLock, RwLock,
 };
 
+pub struct Frame {
+    pub buffer: Vec<u8>,
+    pub width: usize,
+    pub height: usize,
+}
+
 pub struct DoubleBuffer {
-    back: RwLock<Option<Vec<u8>>>,
-    front: RwLock<Option<Vec<u8>>>,
+    back: RwLock<Option<Frame>>,
+    front: RwLock<Option<Frame>>,
 }
 
 impl DoubleBuffer {
-    pub fn new(capacity: usize) -> Self {
+    pub fn new(capacity: usize, width: usize, height: usize) -> Self {
         Self {
-            back: RwLock::new(Some(vec![0; capacity])),
-            front: RwLock::new(Some(vec![0; capacity])),
+            back: RwLock::new(Some(Frame {
+                buffer: vec![0; capacity],
+                width,
+                height,
+            })),
+            front: RwLock::new(Some(Frame {
+                buffer: vec![0; capacity],
+                width,
+                height,
+            })),
         }
     }
 
@@ -24,9 +38,17 @@ impl DoubleBuffer {
         }
     }
 
-    pub fn initialize(&self, capacity: usize) {
-        *self.back.write() = Some(vec![0; capacity]);
-        *self.front.write() = Some(vec![0; capacity]);
+    pub fn initialize(&self, capacity: usize, width: usize, height: usize) {
+        *self.back.write() = Some(Frame {
+            buffer: vec![0; capacity],
+            width,
+            height,
+        });
+        *self.front.write() = Some(Frame {
+            buffer: vec![0; capacity],
+            width,
+            height,
+        });
     }
 
     pub fn uninitialized(&self) -> bool {
@@ -34,7 +56,7 @@ impl DoubleBuffer {
     }
 
     // mutable reference to back
-    pub fn back(&self) -> Option<RwLockWriteGuard<'_, RawRwLock, Option<Vec<u8>>>> {
+    pub fn back(&self) -> Option<RwLockWriteGuard<'_, RawRwLock, Option<Frame>>> {
         self.back.try_write()
     }
 
@@ -44,15 +66,15 @@ impl DoubleBuffer {
 
         debug!(
             "before: back_mut {:?} front_mut {:?}",
-            &back_mut.as_mut().unwrap()[0..20],
-            &front_mut.as_mut().unwrap()[0..20]
+            &back_mut.as_mut().unwrap().buffer[0..20],
+            &front_mut.as_mut().unwrap().buffer[0..20]
         );
 
         std::mem::swap(&mut *back_mut, &mut *front_mut);
     }
 
     // immutable reference to front
-    pub fn front(&self) -> RwLockReadGuard<'_, RawRwLock, Option<Vec<u8>>> {
+    pub fn front(&self) -> RwLockReadGuard<'_, RawRwLock, Option<Frame>> {
         self.front.read()
     }
 }

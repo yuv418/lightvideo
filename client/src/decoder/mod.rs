@@ -66,7 +66,11 @@ impl LVDecoder {
                                     let strides_yuv = yuv_data.strides_yuv();
                                     width = strides_yuv.0 as u32;
                                     height = yuv_data.height() as u32;
-                                    self.double_buffer.initialize((4 * width * height) as usize);
+                                    self.double_buffer.initialize(
+                                        (4 * width * height) as usize,
+                                        width as usize,
+                                        height as usize,
+                                    );
                                 }
                                 debug!("data width: {}, height: {}", width, height);
 
@@ -89,7 +93,7 @@ impl LVDecoder {
 
                                     debug!(
                                         "converting image... dest buf size is {}, src_sizes is {:#?}, ysize usize vsize: [{}, {}, {}], strides from class are {:?}",
-                                        rgba_buffer.as_mut().unwrap().len(),
+                                        rgba_buffer.as_mut().unwrap().buffer.len(),
                                         src_sizes, y.len(), u.len(), v.len(),
                                         yuv_data.strides_yuv()
                                     );
@@ -103,7 +107,7 @@ impl LVDecoder {
                                         &[y, u, v],
                                         &dst_format,
                                         None,
-                                        &mut [&mut *rgba_buffer.as_mut().unwrap()],
+                                        &mut [&mut *rgba_buffer.as_mut().unwrap().buffer],
                                     ) {
                                         Ok(_) => {}
                                         Err(e) => {
@@ -133,7 +137,7 @@ impl LVDecoder {
 
             // debug!("packet {:#?}", packet);
 
-            info!("decode elapsed {:.4?}", time.elapsed());
+            debug!("decode elapsed {:.4?}", time.elapsed());
         }
     }
 }

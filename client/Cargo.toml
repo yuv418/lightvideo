@@ -32,4 +32,5 @@ bytemuck = { version = "1.14", features = ["derive"] }
 
 # Multithreading stuff
 flume = "0.11"
+thingbuf = "0.1"
 parking_lot = "0.12"

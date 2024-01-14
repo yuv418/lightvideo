@@ -1,6 +1,9 @@
 use std::sync::Arc;
 
-use decoder::LVDecoder;
+use decoder::{
+    network::{LVNetwork, LVPacket},
+    video::LVDecoder,
+};
 use double_buffer::DoubleBuffer;
 use flexi_logger::Logger;
 use log::{error, info};
@@ -13,7 +16,7 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("debug, wgpu=info")?.start()?;
+    Logger::try_with_str("info, wgpu=info")?.start()?;
 
     // Bind value
     match std::env::args().nth(1) {
@@ -21,13 +24,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db = Arc::new(DoubleBuffer::new_uninitialized());
             let db_ui = db.clone();
 
-            let t = std::thread::spawn(move || {
-                let mut decoder = LVDecoder::new(db);
-                match decoder.decode(&addr) {
-                    Ok(_) => info!("decoder exited ok"),
-                    Err(e) => error!("decoder exited with error {:?}", e),
-                }
-            });
+            // Set up mpsc
+            let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacket>(100);
+
+            let receiver = LVNetwork::new(&addr);
+            let decoder = LVDecoder::new();
+
+            receiver.run(pkt_push);
+            decoder.run(db, pkt_recv);
 
             // Start ui
             let ui = VideoUI::new()?;

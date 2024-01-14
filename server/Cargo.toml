@@ -41,3 +41,6 @@ spin_sleep = "1"
 
 # Multithreading stuff
 flume = "0.11"
+
+# Statistics
+statistics = { path = "../statistics" }

@@ -44,6 +44,7 @@ impl LVDecoder {
         debug!("starting thread for decode");
 
         LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("client_failed_decode_packets", LVDataType::Aggregate);
 
         let mut pkt = H264Packet::default();
         let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
@@ -172,6 +173,11 @@ impl LVDecoder {
                             if let Some(bt) = e.backtrace() {
                                 error!("backtrace: {}", bt);
                             }
+
+                            LVStatisticsCollector::update_data(
+                                "client_failed_decode_packets",
+                                LVDataPoint::Increment,
+                            );
                         }
                     }
                 } else {

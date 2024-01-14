@@ -3,6 +3,10 @@ use flume::{Receiver, Sender};
 use image::{ImageBuffer, Rgb};
 use log::{debug, error, info};
 use screenshots::Screen;
+use statistics::{
+    collector::LVStatisticsCollector,
+    statistics::{LVDataPoint, LVDataType},
+};
 use std::{
     net::UdpSocket,
     thread,
@@ -97,6 +101,8 @@ impl Server {
         let mut packager = LVPackager::new(encoder, self.fps).expect("Failed to make packager");
         let mut rtp_pkt = BytesMut::new();
 
+        LVStatisticsCollector::register_data("server_packet_sending", LVDataType::TimeSeries);
+
         info!("server bound to {}", self.bind_addr);
 
         let timer = Instant::now();
@@ -130,7 +136,10 @@ impl Server {
                     Err(e) => error!("send_to returned {:?}", e),
                 }
             }
-            debug!("packet sending elapsed {:.4?}", loop_pkg.elapsed());
+            LVStatisticsCollector::update_data(
+                "server_packet_sending",
+                LVDataPoint::TimeElapsed(loop_pkg.elapsed()),
+            );
         }
 
         Ok(())

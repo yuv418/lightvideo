@@ -1,5 +1,6 @@
 use flexi_logger::Logger;
 use server::Server;
+use statistics::collector::LVStatisticsCollector;
 
 mod benchmark;
 mod capture;
@@ -9,6 +10,7 @@ mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str("info")?.start()?;
+    LVStatisticsCollector::start();
 
     match std::env::args().nth(1).as_deref() {
         Some("bench") => benchmark::bench(),

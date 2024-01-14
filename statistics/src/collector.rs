@@ -2,6 +2,7 @@ use std::thread;
 
 use flume::{Receiver, Sender};
 use lazy_static::lazy_static;
+use log::info;
 
 use crate::statistics::{LVDataPoint, LVDataType, LVStatistics};
 
@@ -20,9 +21,11 @@ lazy_static! {
 
 impl LVStatisticsCollector {
     pub fn start() {
-        thread::Builder::new()
+        let (quit_tx, quit_rx) = flume::bounded::<bool>(1);
+
+        let t = thread::Builder::new()
             .name("statistics_thread".to_string())
-            .spawn(|| {
+            .spawn(move || {
                 let mut stat = LVStatistics::new();
 
                 while let Ok(data) = STAT_CH.1.recv() {
@@ -31,10 +34,24 @@ impl LVStatisticsCollector {
                         LVStatisticsMessage::UpdateData(s, p) => stat.update_data(s, p),
                         LVStatisticsMessage::Quit => {
                             let _ = stat.aggregate();
+                            quit_tx.send(true).expect("failed to send quit signal");
+
+                            return;
                         }
                     }
                 }
-            });
+            })
+            .expect("Failed to start statistics thread");
+
+        ctrlc::set_handler(move || {
+            info!("Writing statistics after ctrl-c");
+            let _ = STAT_CH.0.send(LVStatisticsMessage::Quit);
+            if let Ok(true) = quit_rx.recv() {
+                info!("aggregation finished.");
+                std::process::exit(0)
+            }
+        })
+        .expect("Failed to set ctrlc handler");
     }
 
     pub fn register_data(key: &str, data_type: LVDataType) {

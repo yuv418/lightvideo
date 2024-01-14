@@ -13,6 +13,10 @@ use rtp::{
     packetizer::{Packetizer, Payloader},
     sequence::new_random_sequencer,
 };
+use statistics::{
+    collector::LVStatisticsCollector,
+    statistics::{LVDataPoint, LVDataType},
+};
 
 use crate::encoder::LVEncoder;
 
@@ -77,6 +81,14 @@ impl LVPackager {
             num_planes: 3,
         };
 
+        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data(
+            "server_bitstream_buffer_write",
+            LVDataType::TimeSeries,
+        );
+        LVStatisticsCollector::register_data("server_packetization", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("server_queuing", LVDataType::TimeSeries);
+
         let sizes: &mut [usize] = &mut [0usize; 3];
         debug!("frame width {} height {}", buffer.width(), buffer.height());
         get_buffers_size(buffer.width(), buffer.height(), &dst_fmt, None, sizes)?;
@@ -113,7 +125,10 @@ impl LVPackager {
 
         let pre_enc = Instant::now();
         let bit_stream = self.encoder.encode_frame(&self.yuv_buffer, timestamp)?;
-        debug!("encode_frame elapsed time: {:.4?}", pre_enc.elapsed());
+        LVStatisticsCollector::update_data(
+            "server_encode_frame",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
         debug!("h264 bit stream layer count is {}", bit_stream.num_layers());
 
         debug!("bit stream is {:?}", bit_stream.to_vec());
@@ -131,7 +146,10 @@ impl LVPackager {
             "bitstream buffer len after write is {}",
             self.h264_bitstream_writer.get_ref().len(),
         );
-        debug!("bitstream buffer write: {:.4?}", pre_enc.elapsed());
+        LVStatisticsCollector::update_data(
+            "server_bitstream_buffer_write",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
 
         // Extract RTP and put in queue from the bytes
         // The split will be dropped at the end of this function, so when we clear the bitstream writer and write to it later, it will use the whole buffer.
@@ -142,6 +160,10 @@ impl LVPackager {
         let payloads = self
             .packetizer
             .packetize(&unpacketized_payload, SAMPLE_RATE / self.fps)?;
+        LVStatisticsCollector::update_data(
+            "server_packetization",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
         debug!("packetization: {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
@@ -153,7 +175,10 @@ impl LVPackager {
             packet_count += 1;
         }
         debug!("wrote {} RTP packets into queue", packet_count);
-        debug!("queuing: {:.4?}", pre_enc.elapsed());
+        LVStatisticsCollector::update_data(
+            "server_queuing",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
 
         Ok(())
     }

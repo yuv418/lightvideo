@@ -7,6 +7,7 @@ use decoder::{
 use double_buffer::DoubleBuffer;
 use flexi_logger::Logger;
 use log::{error, info};
+use statistics::collector::LVStatisticsCollector;
 use ui::VideoUI;
 
 use pollster::FutureExt as _;
@@ -16,7 +17,9 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("info, wgpu=info")?.start()?;
+    Logger::try_with_str("debug, wgpu=info")?.start()?;
+
+    LVStatisticsCollector::start();
 
     // Bind value
     match std::env::args().nth(1) {
@@ -39,5 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         None => println!("Usage: ./client addr"),
     }
+
+    LVStatisticsCollector::quit();
+
     Ok(())
 }

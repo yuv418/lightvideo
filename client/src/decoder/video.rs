@@ -6,6 +6,10 @@ use openh264::{
     formats::YUVSource,
 };
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
+use statistics::{
+    collector::LVStatisticsCollector,
+    statistics::{LVDataPoint, LVDataType},
+};
 use std::{sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
@@ -38,6 +42,8 @@ impl LVDecoder {
         packet_recv: Receiver<LVPacket>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
+
+        LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
 
         let mut pkt = H264Packet::default();
         let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
@@ -193,8 +199,10 @@ impl LVDecoder {
             }
             buffer.extend_from_slice(&depacketized_payload);
 
-            // debug!("packet {:#?}", packet);
-            debug!("decode elapsed {:.4?}", time.elapsed());
+            LVStatisticsCollector::update_data(
+                "client_decode_packet",
+                LVDataPoint::TimeElapsed(time.elapsed()),
+            );
         }
     }
 }

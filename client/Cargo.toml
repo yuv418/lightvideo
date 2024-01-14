@@ -34,3 +34,6 @@ bytemuck = { version = "1.14", features = ["derive"] }
 flume = "0.11"
 thingbuf = "0.1"
 parking_lot = "0.12"
+
+# Stats
+statistics = { path = "../statistics" }

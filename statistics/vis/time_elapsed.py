@@ -17,6 +17,8 @@ for i in sys.argv[2:]:
     print(f"\tmean: {df.time_elapsed.mean()}")
     print(f"\tmedian: {df.time_elapsed.median()}")
     print(f"\tstddev: {df.time_elapsed.std()}")
+    print(f"\tmin: {df.time_elapsed.min()}")
+    print(f"\tmax: {df.time_elapsed.max()}")
 
     plt.plot(df.index, df.time_elapsed)
     plt.ylabel("time elapsed (in ms)")

@@ -43,6 +43,14 @@ impl LVPackager {
         let width = encoder.width() as usize;
         let height = encoder.height() as usize;
         let mut rand = rand::thread_rng();
+        
+        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data(
+            "server_bitstream_buffer_write",
+            LVDataType::TimeSeries,
+        );
+        LVStatisticsCollector::register_data("server_packetization", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("server_queuing", LVDataType::TimeSeries);
 
         Ok(Self {
             encoder,
@@ -81,13 +89,6 @@ impl LVPackager {
             num_planes: 3,
         };
 
-        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data(
-            "server_bitstream_buffer_write",
-            LVDataType::TimeSeries,
-        );
-        LVStatisticsCollector::register_data("server_packetization", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data("server_queuing", LVDataType::TimeSeries);
 
         let sizes: &mut [usize] = &mut [0usize; 3];
         debug!("frame width {} height {}", buffer.width(), buffer.height());

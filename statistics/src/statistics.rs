@@ -17,6 +17,7 @@ pub enum LVDataPoint {
     Increment,
 }
 
+#[derive(Debug)]
 enum LVStoredData {
     TimeSeries(Vec<LVDataPoint>),
 
@@ -61,8 +62,8 @@ impl LVStatistics {
 
     // This is a horrible API, but I don't really feel like making it better right now.
     pub fn update_data(&mut self, data_name: String, data_point: LVDataPoint) {
-        if let Some(data) = self.data.get_mut(&data_name) {
-            match data {
+        if let Some(mut data_value) = self.data.get_mut(&data_name) {
+            match &mut data_value {
                 LVStoredData::TimeSeries(series) => {
                     if let LVDataPoint::Increment = data_point {
                         warn!(
@@ -70,7 +71,7 @@ impl LVStatistics {
                             data_point
                         )
                     } else {
-                        series.push(data_point)
+                        series.push(data_point);
                     }
                 }
                 LVStoredData::Aggregate(current_val) => {
@@ -84,6 +85,9 @@ impl LVStatistics {
                     }
                 }
             }
+        }
+        else {
+            warn!("could not find data {:?} in HashMap", data_name)
         }
     }
 

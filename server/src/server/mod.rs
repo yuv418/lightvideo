@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
 use flume::{Receiver, Sender};
 use image::{ImageBuffer, Rgb};
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use screenshots::Screen;
 use statistics::{
     collector::LVStatisticsCollector,
@@ -52,7 +52,7 @@ impl Server {
     }
 
     pub fn begin(&self) -> Result<(), Box<dyn std::error::Error>> {
-        let (frame_push, frame_recv) = flume::bounded(20);
+        let (frame_push, frame_recv) = flume::bounded(2);
         self.start_capture_thread(frame_push)?;
         self.start_send_loop(frame_recv)?;
         Ok(())
@@ -74,7 +74,8 @@ impl Server {
                     Ok(frame) => {
                         // Throw the stuff into the mpmc
                         match frame_push.try_send(frame) {
-                            Err(e) => error!("could not push to q {:?}", e),
+                            // This is normal.
+                            Err(e) => trace!("could not push to q {:?}", e),
                             _ => {}
                         }
                     }

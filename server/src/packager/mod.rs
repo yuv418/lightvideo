@@ -27,7 +27,7 @@ const SAMPLE_RATE: u32 = 90000;
 
 // Encode -> RTP Encapsulation -> Encrypt (skip for now) -> Error Correct (skip for now)
 pub struct LVPackager {
-    encoder: LVEncoder,
+    encoder: Box<dyn LVEncoder>,
     h264_bitstream_writer: Writer<BytesMut>,
     yuv_buffer: YUVBuffer,
 
@@ -39,16 +39,11 @@ pub struct LVPackager {
 
 //
 impl LVPackager {
-    pub fn new(encoder: LVEncoder, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(encoder: Box<dyn LVEncoder>, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
         let width = encoder.width() as usize;
         let height = encoder.height() as usize;
         let mut rand = rand::thread_rng();
-        
-        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data(
-            "server_bitstream_buffer_write",
-            LVDataType::TimeSeries,
-        );
+
         LVStatisticsCollector::register_data("server_packetization", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("server_queuing", LVDataType::TimeSeries);
 
@@ -89,7 +84,6 @@ impl LVPackager {
             num_planes: 3,
         };
 
-
         let sizes: &mut [usize] = &mut [0usize; 3];
         debug!("frame width {} height {}", buffer.width(), buffer.height());
         get_buffers_size(buffer.width(), buffer.height(), &dst_fmt, None, sizes)?;
@@ -125,31 +119,15 @@ impl LVPackager {
         debug!("convert image sequence is {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
-        let bit_stream = self.encoder.encode_frame(&self.yuv_buffer, timestamp)?;
-        LVStatisticsCollector::update_data(
-            "server_encode_frame",
-            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
-        );
-        debug!("h264 bit stream layer count is {}", bit_stream.num_layers());
-
-        debug!("bit stream is {:?}", bit_stream.to_vec());
-
-        let pre_enc = Instant::now();
-        // Delete the old packet.
-        self.h264_bitstream_writer.get_mut().clear();
-
-        // TODO how to reserve the memory in advance?
-
-        // Put in the bitstream buffer
-        let _ = bit_stream.write(&mut self.h264_bitstream_writer);
+        let bit_stream = self.encoder.encode_frame(
+            &self.yuv_buffer,
+            timestamp,
+            &mut self.h264_bitstream_writer,
+        )?;
 
         debug!(
             "bitstream buffer len after write is {}",
             self.h264_bitstream_writer.get_ref().len(),
-        );
-        LVStatisticsCollector::update_data(
-            "server_bitstream_buffer_write",
-            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
         );
 
         // Extract RTP and put in queue from the bytes

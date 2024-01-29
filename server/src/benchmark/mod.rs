@@ -3,9 +3,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::capture::{linux::LVLinuxCapturer, LVCapturer};
 use crate::encoder::LVEncoder;
 use crate::packager::LVPackager;
+use crate::{
+    capture::{linux::LVLinuxCapturer, LVCapturer},
+    encoder::openh264::LVOpenH264Encoder,
+};
 use log::{debug, error, info};
 use screenshots::Screen;
 use webrtc_util::{Marshal, MarshalSize};
@@ -36,8 +39,8 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
         width, height
     );
 
-    let encoder = LVEncoder::new(width, height, BITRATE, FRAMERATE)?;
-    let mut packager = LVPackager::new(encoder, FRAMERATE as u32)?;
+    let encoder = LVOpenH264Encoder::new(width, height, BITRATE, FRAMERATE)?;
+    let mut packager = LVPackager::new(Box::new(encoder), FRAMERATE as u32)?;
 
     // bad benchmark
 

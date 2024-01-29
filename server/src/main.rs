@@ -9,7 +9,7 @@ mod packager;
 mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("info,statistics=debug")?.start()?;
+    Logger::try_with_str("debug,statistics=debug")?.start()?;
     LVStatisticsCollector::start();
 
     match std::env::args().nth(1).as_deref() {

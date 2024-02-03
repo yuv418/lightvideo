@@ -70,18 +70,18 @@ impl LVDecoder {
         loop {
             // TODO don't copy. We slice the buffer so it only uses the part of the buffer that was written to by the socket receive.
             let time = Instant::now();
-            let mut bytes = {
-                let data = packet_recv.recv();
-                if let Some(data) = data {
-                    data.payload
-                } else {
-                    error!("the network push buffer has closed");
-                    return Err(Box::new(std::io::Error::new(
-                        std::io::ErrorKind::BrokenPipe,
-                        "no more network data",
-                    )));
-                }
-            };
+            let data = packet_recv.recv_ref();
+            if let None = data {
+                error!("the network push buffer has closed");
+                return Err(Box::new(std::io::Error::new(
+                    std::io::ErrorKind::BrokenPipe,
+                    "no more network data",
+                )));
+            }
+            // horrible rust coding practices 101
+            let data_ext = data.unwrap();
+            let mut bytes = &data_ext.payload[..data_ext.amt];
+
             debug!("recved data from socket thread");
             // turn into packet
             let packet = Packet::unmarshal(&mut bytes)?;

@@ -536,6 +536,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "cudarc"
+version = "0.9.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f1871a911a2b9a3f66a285896a719159985683bf9903aa2cf89e0c9f53e14552"
+
+[[package]]
 name = "cursor-icon"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1475,6 +1481,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nvidia-video-codec-sdk"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6ff0ff1a9d7d353400d20ad03d0871e817d9583b25a901a462eb48acc09c3e20"
+dependencies = [
+ "cudarc",
+ "lazy_static",
+]
+
+[[package]]
 name = "objc"
 version = "0.2.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2054,6 +2070,7 @@ dependencies = [
  "image",
  "libc",
  "log",
+ "nvidia-video-codec-sdk",
  "openh264",
  "openh264-sys2",
  "rand",

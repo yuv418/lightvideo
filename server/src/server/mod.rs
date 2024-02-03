@@ -52,6 +52,7 @@ impl Server {
     }
 
     pub fn begin(&self) -> Result<(), Box<dyn std::error::Error>> {
+        // HUGE lag because frame backlog exists if this is like anything more than 2
         let (frame_push, frame_recv) = flume::bounded(2);
         self.start_capture_thread(frame_push)?;
         self.start_send_loop(frame_recv)?;

@@ -1,3 +1,7 @@
 [submodule "openh264-rs"]
 	path = openh264-rs
 	url = git@github.com:yuv418/openh264-rs.git
+
+[submodule "nvidia-video-codec-sdk"]
+	path = nvidia-video-codec-sdk
+	url = git@github.com:yuv418/nvidia-video-codec-sdk.git

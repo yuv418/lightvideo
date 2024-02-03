@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, fs::File, io::Write, time::Instant};
 
 use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
 use image::{ImageBuffer, Rgb};
-use log::debug;
+use log::{debug, trace};
 use openh264::formats::{YUVBuffer, YUVSource};
 use rand::Rng;
 use rtp::{
@@ -34,6 +34,7 @@ pub struct LVPackager {
     // TODO: Can we minimize the number of heap allocations with this?
     rtp_queue: VecDeque<Packet>,
     packetizer: Box<dyn Packetizer>,
+    file: File,
     fps: u32,
 }
 
@@ -61,6 +62,7 @@ impl LVPackager {
                 Box::new(new_random_sequencer()),
                 SAMPLE_RATE,
             )),
+            file: File::create("cap.h264")?,
             fps,
         })
     }
@@ -73,15 +75,17 @@ impl LVPackager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pre_enc = Instant::now();
         // Convert RGBA8 to YUV420
+
+        // TODO: move this to the encoder itself because they require different formats
         let src_fmt = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::Bgra,
             color_space: ColorSpace::Rgb,
             num_planes: 1,
         };
         let dst_fmt = ImageFormat {
-            pixel_format: dcv_color_primitives::PixelFormat::I420,
+            pixel_format: dcv_color_primitives::PixelFormat::Nv12,
             color_space: ColorSpace::Bt601,
-            num_planes: 3,
+            num_planes: 1,
         };
 
         let sizes: &mut [usize] = &mut [0usize; 3];
@@ -134,22 +138,28 @@ impl LVPackager {
         // The split will be dropped at the end of this function, so when we clear the bitstream writer and write to it later, it will use the whole buffer.
         let pre_enc = Instant::now();
         let unpacketized_payload: Bytes = Bytes::from(self.h264_bitstream_writer.get_mut().split());
+
+        // write this for debugging purposes
+        self.file.write(&unpacketized_payload);
+
         debug!("unpacketized_payload len is {}", unpacketized_payload.len());
 
         let payloads = self
             .packetizer
             .packetize(&unpacketized_payload, SAMPLE_RATE / self.fps)?;
+
         LVStatisticsCollector::update_data(
             "server_packetization",
             LVDataPoint::TimeElapsed(pre_enc.elapsed()),
         );
+
         debug!("packetization: {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
         let mut packet_count = 0;
         for payload in payloads {
             // Marshal into RTP.
-            debug!("packet payload data: {:?}", &payload.payload.as_ref());
+            trace!("packet payload data: {:?}", &payload.payload.as_ref());
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }

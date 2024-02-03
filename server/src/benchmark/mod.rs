@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::encoder::LVEncoder;
+use crate::encoder::{nvidia::LVNvidiaEncoder, LVEncoder};
 use crate::packager::LVPackager;
 use crate::{
     capture::{linux::LVLinuxCapturer, LVCapturer},
@@ -39,7 +39,7 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
         width, height
     );
 
-    let encoder = LVOpenH264Encoder::new(width, height, BITRATE, FRAMERATE)?;
+    let encoder = LVNvidiaEncoder::new(width, height, BITRATE, FRAMERATE)?;
     let mut packager = LVPackager::new(Box::new(encoder), FRAMERATE as u32)?;
 
     // bad benchmark

@@ -1,6 +1,8 @@
 use std::{io::ErrorKind, os::raw::c_int, time::Instant};
 
 use bytes::{buf::Writer, BytesMut};
+use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
+use image::{ImageBuffer, Rgb};
 use log::debug;
 use openh264::{
     encoder::{EncodedBitStream, Encoder},
@@ -20,6 +22,12 @@ pub struct LVOpenH264Encoder {
     encoder: Encoder,
     width: u32,
     height: u32,
+
+    // Image conversion stuff
+    src_fmt: ImageFormat,
+    dst_fmt: ImageFormat,
+    src_strides: [usize; 1],
+    out_sizes: [usize; 3],
 }
 
 // The primary purpose of this is to tune the Encoder parameters in one place.
@@ -50,8 +58,22 @@ impl LVEncoder for LVOpenH264Encoder {
         params.iMinQp = 21;
         params.iMinQp = 35;
 
-        let _true_val = true;
-        let _false_val = false;
+        let src_fmt = ImageFormat {
+            pixel_format: dcv_color_primitives::PixelFormat::Bgra,
+            color_space: dcv_color_primitives::ColorSpace::Rgb,
+            num_planes: 1,
+        };
+        let dst_fmt = ImageFormat {
+            pixel_format: dcv_color_primitives::PixelFormat::I420,
+            color_space: dcv_color_primitives::ColorSpace::Bt601,
+            num_planes: 3,
+        };
+
+        let mut out_sizes = [0usize; 3];
+
+        get_buffers_size(width, height, &dst_fmt, None, &mut out_sizes)?;
+
+        let src_strides = [4 * (width as usize)];
 
         LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data(
@@ -68,6 +90,11 @@ impl LVEncoder for LVOpenH264Encoder {
                 encoder,
                 width,
                 height,
+
+                dst_fmt,
+                src_fmt,
+                out_sizes,
+                src_strides,
             })
         }
     }
@@ -105,6 +132,28 @@ impl LVEncoder for LVOpenH264Encoder {
             "server_bitstream_buffer_write",
             LVDataPoint::TimeElapsed(pre_enc.elapsed()),
         );
+        Ok(())
+    }
+
+    fn convert_frame(
+        &mut self,
+        input_buffer: ImageBuffer<Rgb<u8>, Vec<u8>>,
+        output_buffer: &mut YUVBuffer,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (mut y_slice, uv_slice) = output_buffer.yuv.split_at_mut(self.out_sizes[0]);
+        let (mut u_slice, mut v_slice) = uv_slice.split_at_mut(self.out_sizes[1]);
+
+        convert_image(
+            input_buffer.width(),
+            input_buffer.height(),
+            &self.src_fmt,
+            Some(&self.src_strides),
+            &[&input_buffer.into_raw()],
+            &self.dst_fmt,
+            None,
+            &mut [&mut y_slice, &mut u_slice, &mut v_slice],
+        )?;
+
         Ok(())
     }
 }

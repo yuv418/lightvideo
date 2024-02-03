@@ -3,6 +3,8 @@ use std::io::Write;
 use std::sync::Arc;
 
 use cudarc::driver::CudaDevice;
+use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
+use image::{ImageBuffer, Rgb};
 use log::{debug, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
@@ -12,7 +14,8 @@ use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
 };
 use nvidia_video_codec_sdk::{
-    Bitstream, Buffer, CodecPictureParams, EncodePictureParams, Encoder, Session,
+    Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
+    Session,
 };
 use openh264::formats::YUVBuffer;
 
@@ -25,6 +28,12 @@ pub struct LVNvidiaEncoder {
     width: u32,
     height: u32,
     frame_no: u64,
+
+    // image conversion stuff
+    src_fmt: ImageFormat,
+    dst_fmt: ImageFormat,
+    src_strides: [usize; 1],
+    out_sizes: [usize; 3],
 }
 
 impl LVEncoder for LVNvidiaEncoder {
@@ -49,21 +58,56 @@ impl LVEncoder for LVNvidiaEncoder {
                 nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY,
             )?;
 
+        let src_fmt = ImageFormat {
+            pixel_format: dcv_color_primitives::PixelFormat::Bgra,
+            color_space: dcv_color_primitives::ColorSpace::Rgb,
+            num_planes: 1,
+        };
+        let dst_fmt = ImageFormat {
+            pixel_format: dcv_color_primitives::PixelFormat::Nv12,
+            color_space: dcv_color_primitives::ColorSpace::Bt601,
+            num_planes: 1,
+        };
+
+        let mut out_sizes = [0usize; 3];
+
+        get_buffers_size(width, height, &dst_fmt, None, &mut out_sizes)?;
+
+        let src_strides = [4 * (width as usize)];
+
         unsafe {
             preset_cfg.presetCfg.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
             info!(
                 "idr period is {}",
                 preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod
             );
-            // std::process::exit(0);
-            preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 120;
+            preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 60;
+            preset_cfg.presetCfg.gopLength = 60;
+
             preset_cfg
                 .presetCfg
                 .encodeCodecConfig
                 .h264Config
-                .set_repeatSPSPPS(240);
+                .set_repeatSPSPPS(1);
+            preset_cfg
+                .presetCfg
+                .encodeCodecConfig
+                .h264Config
+                .set_enableIntraRefresh(1);
+            preset_cfg
+                .presetCfg
+                .encodeCodecConfig
+                .h264Config
+                .intraRefreshPeriod = 60;
+            preset_cfg
+                .presetCfg
+                .encodeCodecConfig
+                .h264Config
+                .intraRefreshCnt = 60;
 
-            preset_cfg.presetCfg.gopLength = 120;
+            // Setting frameIntervalP messes with things, namely it makes the encoder never output P frames, or anythign past
+            // the first SPS/PPS
+            // preset_cfg.presetCfg.frameIntervalP = 300;
 
             /*q.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
             enc_params.encodeCode = q;*/
@@ -74,6 +118,7 @@ impl LVEncoder for LVNvidiaEncoder {
         enc_params.framerate(framerate as u32, 1);
         enc_params.enable_picture_type_decision();
         enc_params.encode_config(&mut preset_cfg.presetCfg);
+
         //
         let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, enc_params)?;
         info!("NVIDIA encoder has been initialized");
@@ -83,6 +128,10 @@ impl LVEncoder for LVNvidiaEncoder {
             height,
             enc_session,
             frame_no: 0,
+            src_fmt,
+            dst_fmt,
+            src_strides,
+            out_sizes,
             // output_bitstream,
         })
     }
@@ -114,15 +163,16 @@ impl LVEncoder for LVNvidiaEncoder {
         debug!("Beginning frame encode");
         debug!("timestamp is {}", timestamp);
 
-        self.enc_session.encode_picture(
+        match self.enc_session.encode_picture(
             &mut input_buffer,
             &mut output_bitstream,
-            if self.frame_no % 180 == 0 {
-                debug!("sending spspps");
+            if self.frame_no % 120 == 0 {
+                0
+                /*debug!("sending spspps");
                 ((NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_FORCEIDR as u8)
                     | (NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_OUTPUT_SPSPPS as u8)
                     | (NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_FORCEINTRA as u8))
-                    .into()
+                    .into()*/
             } else {
                 0
             },
@@ -130,22 +180,48 @@ impl LVEncoder for LVNvidiaEncoder {
                 input_timestamp: timestamp,
                 ..Default::default()
             },
+        ) {
+            Err(e) if e.kind() == ErrorKind::NeedMoreInput => Ok(()),
+            Ok(()) => {
+                debug!("Finished frame encode");
+
+                let bs_lock = output_bitstream.lock().unwrap();
+                let h264_data = bs_lock.data();
+
+                h264_buffer.write(&h264_data);
+
+                dbg!(bs_lock.duration());
+                dbg!(bs_lock.frame_index());
+                dbg!(bs_lock.picture_type());
+                dbg!(bs_lock.timestamp());
+
+                trace!("h264_buffer is {:?}", h264_buffer.get_ref().len());
+                self.frame_no += 1;
+
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+
+    fn convert_frame(
+        &mut self,
+        input_buffer: ImageBuffer<Rgb<u8>, Vec<u8>>,
+        output_buffer: &mut YUVBuffer,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let (mut y_slice, uv_slice) = output_buffer.yuv.split_at_mut(self.out_sizes[0]);
+        let (mut u_slice, mut v_slice) = uv_slice.split_at_mut(self.out_sizes[1]);
+
+        convert_image(
+            input_buffer.width(),
+            input_buffer.height(),
+            &self.src_fmt,
+            Some(&self.src_strides),
+            &[&input_buffer.into_raw()],
+            &self.dst_fmt,
+            None,
+            &mut [&mut y_slice, &mut u_slice, &mut v_slice],
         )?;
-
-        debug!("Finished frame encode");
-
-        let bs_lock = output_bitstream.lock().unwrap();
-        let h264_data = bs_lock.data();
-
-        h264_buffer.write(&h264_data);
-
-        dbg!(bs_lock.duration());
-        dbg!(bs_lock.frame_index());
-        dbg!(bs_lock.picture_type());
-        dbg!(bs_lock.timestamp());
-
-        trace!("h264_buffer is {:?}", h264_buffer.get_ref().len());
-        self.frame_no += 1;
 
         Ok(())
     }

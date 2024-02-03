@@ -75,51 +75,7 @@ impl LVPackager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pre_enc = Instant::now();
         // Convert RGBA8 to YUV420
-
-        // TODO: move this to the encoder itself because they require different formats
-        let src_fmt = ImageFormat {
-            pixel_format: dcv_color_primitives::PixelFormat::Bgra,
-            color_space: ColorSpace::Rgb,
-            num_planes: 1,
-        };
-        let dst_fmt = ImageFormat {
-            pixel_format: dcv_color_primitives::PixelFormat::Nv12,
-            color_space: ColorSpace::Bt601,
-            num_planes: 1,
-        };
-
-        let sizes: &mut [usize] = &mut [0usize; 3];
-        debug!("frame width {} height {}", buffer.width(), buffer.height());
-        get_buffers_size(buffer.width(), buffer.height(), &dst_fmt, None, sizes)?;
-        debug!(
-            "{:?} and yuv buffer capacity is {}",
-            sizes,
-            self.yuv_buffer.yuv.capacity()
-        );
-
-        let src_sizes: &mut [usize] = &mut [0usize; 1];
-        get_buffers_size(buffer.width(), buffer.height(), &src_fmt, None, src_sizes)?;
-        debug!(
-            "{:?} and src buffer capacity is {}",
-            src_sizes,
-            buffer.len(),
-        );
-
-        let src_strides: &[usize] = &[4 * (buffer.width() as usize)];
-
-        let (mut y_slice, uv_slice) = self.yuv_buffer.yuv.split_at_mut(sizes[0]);
-        let (mut u_slice, mut v_slice) = uv_slice.split_at_mut(sizes[1]);
-
-        convert_image(
-            buffer.width(),
-            buffer.height(),
-            &src_fmt,
-            Some(src_strides),
-            &[&buffer.into_raw()],
-            &dst_fmt,
-            None,
-            &mut [&mut y_slice, &mut u_slice, &mut v_slice],
-        )?;
+        self.encoder.convert_frame(buffer, &mut self.yuv_buffer);
         debug!("convert image sequence is {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
@@ -140,7 +96,7 @@ impl LVPackager {
         let unpacketized_payload: Bytes = Bytes::from(self.h264_bitstream_writer.get_mut().split());
 
         // write this for debugging purposes
-        self.file.write(&unpacketized_payload);
+        // self.file.write(&unpacketized_payload);
 
         debug!("unpacketized_payload len is {}", unpacketized_payload.len());
 

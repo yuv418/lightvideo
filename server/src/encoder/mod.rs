@@ -1,6 +1,7 @@
 use std::os::raw::c_int;
 
 use bytes::{buf::Writer, BytesMut};
+use image::{ImageBuffer, Rgb};
 use openh264::formats::YUVBuffer;
 
 pub mod nvidia;
@@ -20,7 +21,11 @@ pub trait LVEncoder {
     fn height(&self) -> u32;
 
     // Convert the RGBA/whatever frame to something that the codec will understand
-    // fn convert_frame()
+    fn convert_frame(
+        &mut self,
+        input_buffer: ImageBuffer<Rgb<u8>, Vec<u8>>,
+        output_buffer: &mut YUVBuffer,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 
     // TODO: Make our own version of YUVSource that maybe has an "into YUVSource" kind of thing.
     fn encode_frame(

@@ -7,7 +7,7 @@ use crate::encoder::{nvidia::LVNvidiaEncoder, LVEncoder};
 use crate::packager::LVPackager;
 use crate::{
     capture::{linux::LVLinuxCapturer, LVCapturer},
-    encoder::openh264::LVOpenH264Encoder,
+    encoder::openh264_enc::LVOpenH264Encoder,
 };
 use log::{debug, error, info};
 use screenshots::Screen;

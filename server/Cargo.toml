@@ -14,7 +14,8 @@ edition = "2021"
 # Capture
 xcb = { version = "1", features = ["shm"] }
 libc = "0.2"
-screenshots = "0.8.4"
+# Follow semver!!
+screenshots = "=0.8.4"
 image = "0.24"
 
 # Encode

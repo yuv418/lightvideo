@@ -14,6 +14,7 @@ use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodePictureParams, Encoder, Session,
 };
+use openh264::formats::YUVBuffer;
 
 use super::LVEncoder;
 
@@ -96,7 +97,7 @@ impl LVEncoder for LVNvidiaEncoder {
 
     fn encode_frame(
         &mut self,
-        buffer: &openh264::formats::YUVBuffer,
+        buffer: &YUVBuffer,
         // Milliseconds from start.
         timestamp: u64,
         h264_buffer: &mut bytes::buf::Writer<bytes::BytesMut>,
@@ -116,7 +117,7 @@ impl LVEncoder for LVNvidiaEncoder {
         self.enc_session.encode_picture(
             &mut input_buffer,
             &mut output_bitstream,
-            if self.frame_no % 240 == 0 {
+            if self.frame_no % 180 == 0 {
                 debug!("sending spspps");
                 ((NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_FORCEIDR as u8)
                     | (NV_ENC_PIC_FLAGS::NV_ENC_PIC_FLAG_OUTPUT_SPSPPS as u8)

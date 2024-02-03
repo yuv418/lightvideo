@@ -16,7 +16,7 @@ use webrtc_util::{Marshal, MarshalSize};
 
 use crate::{
     capture::{linux::LVLinuxCapturer, LVCapturer},
-    encoder::{nvidia::LVNvidiaEncoder, openh264::LVOpenH264Encoder, LVEncoder},
+    encoder::{nvidia::LVNvidiaEncoder, openh264_enc::LVOpenH264Encoder, LVEncoder},
     packager::LVPackager,
 };
 

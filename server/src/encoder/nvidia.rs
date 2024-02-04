@@ -81,6 +81,17 @@ impl LVEncoder for LVNvidiaEncoder {
                 "idr period is {}",
                 preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod
             );
+            preset_cfg
+                .presetCfg
+                .encodeCodecConfig
+                .h264Config
+                .maxNumRefFrames = 1;
+            preset_cfg.presetCfg.encodeCodecConfig.h264Config.sliceMode = 0;
+            preset_cfg
+                .presetCfg
+                .encodeCodecConfig
+                .h264Config
+                .sliceModeData = 0;
             preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 60;
             preset_cfg.presetCfg.gopLength = 60;
 
@@ -103,9 +114,9 @@ impl LVEncoder for LVNvidiaEncoder {
                 .presetCfg
                 .encodeCodecConfig
                 .h264Config
-                .intraRefreshCnt = 60;
+                .intraRefreshCnt = 5;
 
-            // Setting frameIntervalP messes with things, namely it makes the encoder never output P frames, or anythign past
+            // Setting frameInter   valP messes with things, namely it makes the encoder never output P frames, or anythign past
             // the first SPS/PPS
             // preset_cfg.presetCfg.frameIntervalP = 300;
 

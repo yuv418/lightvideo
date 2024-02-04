@@ -12,6 +12,7 @@ use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
+    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -55,7 +56,7 @@ impl LVEncoder for LVNvidiaEncoder {
             enc.get_preset_config(
                 NV_ENC_CODEC_H264_GUID,
                 NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
-                nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_HIGH_QUALITY,
+                nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
             )?;
 
         let src_fmt = ImageFormat {
@@ -87,13 +88,15 @@ impl LVEncoder for LVNvidiaEncoder {
                 .h264Config
                 .maxNumRefFrames = 1;
             preset_cfg.presetCfg.encodeCodecConfig.h264Config.sliceMode = 0;
+            preset_cfg.presetCfg.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
+            preset_cfg.presetCfg.rcParams.averageBitRate = bitrate;
             preset_cfg
                 .presetCfg
                 .encodeCodecConfig
                 .h264Config
                 .sliceModeData = 0;
-            preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 60;
-            preset_cfg.presetCfg.gopLength = 60;
+            preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 300;
+            preset_cfg.presetCfg.gopLength = 300;
 
             preset_cfg
                 .presetCfg
@@ -109,12 +112,12 @@ impl LVEncoder for LVNvidiaEncoder {
                 .presetCfg
                 .encodeCodecConfig
                 .h264Config
-                .intraRefreshPeriod = 60;
+                .intraRefreshPeriod = 300;
             preset_cfg
                 .presetCfg
                 .encodeCodecConfig
                 .h264Config
-                .intraRefreshCnt = 5;
+                .intraRefreshCnt = 30;
 
             // Setting frameInter   valP messes with things, namely it makes the encoder never output P frames, or anythign past
             // the first SPS/PPS

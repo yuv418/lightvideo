@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("server") => match std::env::args().nth(2) {
             Some(addr) => {
                 let target_addr = std::env::args().nth(3).unwrap();
-                let server = Server::new(&addr, &target_addr, 60, 0, 1920, 1080, 7000000, quit_rx)?;
+                let server = Server::new(&addr, &target_addr, 60, 0, 1920, 1080, 5000000, quit_rx)?;
                 server.begin()
             }
             None => {

@@ -27,8 +27,8 @@ use super::LVEncoder;
 
 pub struct LVNvidiaEncoder {
     enc_session: Session,
-    // input_buffer: Buffer<'a>,
-    // output_bitstream: Bitstream<'a>,
+    input_buffer: Buffer,
+    output_bitstream: Bitstream,
     width: u32,
     height: u32,
     frame_no: u64,
@@ -147,6 +147,14 @@ impl LVEncoder for LVNvidiaEncoder {
         let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, enc_params)?;
         info!("NVIDIA encoder has been initialized");
 
+        let pre_enc = Instant::now();
+        let mut input_buffer = enc_session.create_input_buffer()?;
+        let mut output_bitstream = enc_session.create_output_bitstream()?;
+        LVStatisticsCollector::update_data(
+            "server_allocate_frames",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
+
         Ok(Self {
             width,
             height,
@@ -156,7 +164,8 @@ impl LVEncoder for LVNvidiaEncoder {
             dst_fmt,
             src_strides,
             out_sizes,
-            // output_bitstream,
+            input_buffer,
+            output_bitstream,
         })
     }
 
@@ -177,16 +186,8 @@ impl LVEncoder for LVNvidiaEncoder {
     ) -> Result<(), Box<dyn std::error::Error>> {
         // this doesn't create a memory leak.. right?
 
-        let pre_enc = Instant::now();
-        let mut input_buffer = self.enc_session.create_input_buffer()?;
-        let mut output_bitstream = self.enc_session.create_output_bitstream()?;
-        LVStatisticsCollector::update_data(
-            "server_allocate_frames",
-            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
-        );
-
         unsafe {
-            let mut i = input_buffer.lock().unwrap();
+            let mut i = self.input_buffer.lock().unwrap();
             i.write(&buffer.yuv);
         }
 
@@ -196,8 +197,8 @@ impl LVEncoder for LVNvidiaEncoder {
         let pre_enc = Instant::now();
 
         match self.enc_session.encode_picture(
-            &mut input_buffer,
-            &mut output_bitstream,
+            &mut self.input_buffer,
+            &mut self.output_bitstream,
             if self.frame_no % 120 == 0 {
                 0
                 /*debug!("sending spspps");
@@ -221,7 +222,7 @@ impl LVEncoder for LVNvidiaEncoder {
                 );
                 debug!("Finished frame encode");
 
-                let bs_lock = output_bitstream.lock().unwrap();
+                let bs_lock = self.output_bitstream.lock().unwrap();
                 let h264_data = bs_lock.data();
 
                 let pre_enc = Instant::now();

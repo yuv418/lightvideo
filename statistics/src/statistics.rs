@@ -1,7 +1,7 @@
 use std::{collections::HashMap, fs::File, io::Write, path::Path, time::Duration};
 
 use chrono::Utc;
-use log::{debug, warn};
+use log::{debug, info, warn};
 
 const STATOUT: &'static str = "statout";
 
@@ -85,19 +85,20 @@ impl LVStatistics {
                     }
                 }
             }
-        }
-        else {
+        } else {
             warn!("could not find data {:?} in HashMap", data_name)
         }
     }
 
     pub fn aggregate(&self) -> Result<(), Box<dyn std::error::Error>> {
         // Output data to STATOUT
+        info!("Writing aggregation stats...");
         let out_path = Path::new(STATOUT).join(Utc::now().to_string());
         std::fs::create_dir_all(&out_path)?;
 
         for (data_name, value) in &self.data {
             let out_file = out_path.join(data_name);
+            debug!("data value is {:?}", value);
             match value {
                 LVStoredData::TimeSeries(ts) => {
                     // durations are converted to ms
@@ -133,6 +134,7 @@ impl LVStatistics {
                 }
             }
         }
+        info!("Finished writing statistics.");
         Ok(())
     }
 }

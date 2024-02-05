@@ -1,7 +1,7 @@
 use bytes::{BufMut, BytesMut};
-use flume::{Receiver, Sender};
+use flume::{Receiver, Sender, TryRecvError};
 use image::{ImageBuffer, Rgb};
-use log::{debug, error, info, trace};
+use log::{debug, error, info, trace, warn};
 use screenshots::Screen;
 use statistics::{
     collector::LVStatisticsCollector,
@@ -28,6 +28,7 @@ pub struct Server {
     width: u32,
     height: u32,
     bitrate: u32,
+    quit_rx: Receiver<bool>,
 }
 
 impl Server {
@@ -39,6 +40,7 @@ impl Server {
         width: u32,
         height: u32,
         bitrate: u32,
+        quit_rx: Receiver<bool>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             bind_addr: bind_addr.to_owned(),
@@ -48,6 +50,7 @@ impl Server {
             width,
             height,
             bitrate,
+            quit_rx,
         })
     }
 
@@ -112,6 +115,18 @@ impl Server {
 
         // TODO: Add statistics
         loop {
+            match self.quit_rx.try_recv() {
+                Ok(val) if val => {
+                    info!("Ctrl-c received, statistics logged, quitting...");
+                    break;
+                }
+                Err(e) => {
+                    if e != TryRecvError::Empty {
+                        error!("quit_rx from statistics module gave {:?}", e)
+                    }
+                }
+                _ => warn!("quit_rx gave false value!"),
+            }
             match frame_recv.recv() {
                 Ok(frame) => {
                     match packager.process_frame(frame, timer.elapsed().as_millis() as u64) {

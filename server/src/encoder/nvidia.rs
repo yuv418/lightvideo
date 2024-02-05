@@ -25,7 +25,7 @@ use super::LVEncoder;
 pub struct LVNvidiaEncoder {
     enc_session: Session,
     // input_buffer: Buffer<'a>,
-    // utput_bitstream: Bitstream<'a>,
+    // output_bitstream: Bitstream<'a>,
     width: u32,
     height: u32,
     frame_no: u64,

@@ -21,6 +21,9 @@ for i in sys.argv[2:]:
     print(f"\tmax: {df.time_elapsed.max()}")
 
     plt.plot(df.index, df.time_elapsed)
-    plt.ylabel("time elapsed (in ms)")
+    unit = "ns" 
+    if only_ms:
+        unit = "ms"
+    plt.ylabel("time elapsed (in " + unit + ")")
     plt.xlabel("iteration of decoding")
     plt.show()

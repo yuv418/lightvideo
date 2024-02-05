@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
+use std::time::Instant;
 
 use cudarc::driver::CudaDevice;
 use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
@@ -19,6 +20,8 @@ use nvidia_video_codec_sdk::{
     Session,
 };
 use openh264::formats::YUVBuffer;
+use statistics::collector::LVStatisticsCollector;
+use statistics::statistics::{LVDataPoint, LVDataType};
 
 use super::LVEncoder;
 
@@ -49,6 +52,13 @@ impl LVEncoder for LVNvidiaEncoder {
     {
         let dev = CudaDevice::new(0)?;
         let enc = Encoder::initialize_with_cuda(dev)?;
+
+        LVStatisticsCollector::register_data("server_allocate_frames", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data(
+            "server_bitstream_buffer_write",
+            LVDataType::TimeSeries,
+        );
 
         let mut enc_params = NV_ENC_INITIALIZE_PARAMS::new(NV_ENC_CODEC_H264_GUID, width, height);
 
@@ -166,8 +176,14 @@ impl LVEncoder for LVNvidiaEncoder {
         h264_buffer: &mut bytes::buf::Writer<bytes::BytesMut>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // this doesn't create a memory leak.. right?
+
+        let pre_enc = Instant::now();
         let mut input_buffer = self.enc_session.create_input_buffer()?;
         let mut output_bitstream = self.enc_session.create_output_bitstream()?;
+        LVStatisticsCollector::update_data(
+            "server_allocate_frames",
+            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+        );
 
         unsafe {
             let mut i = input_buffer.lock().unwrap();
@@ -176,6 +192,8 @@ impl LVEncoder for LVNvidiaEncoder {
 
         debug!("Beginning frame encode");
         debug!("timestamp is {}", timestamp);
+
+        let pre_enc = Instant::now();
 
         match self.enc_session.encode_picture(
             &mut input_buffer,
@@ -197,13 +215,23 @@ impl LVEncoder for LVNvidiaEncoder {
         ) {
             Err(e) if e.kind() == ErrorKind::NeedMoreInput => Ok(()),
             Ok(()) => {
+                LVStatisticsCollector::update_data(
+                    "server_encode_frame",
+                    LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+                );
                 debug!("Finished frame encode");
 
                 let bs_lock = output_bitstream.lock().unwrap();
                 let h264_data = bs_lock.data();
 
+                let pre_enc = Instant::now();
+
                 h264_buffer.write(&h264_data);
 
+                LVStatisticsCollector::update_data(
+                    "server_bitstream_buffer_write",
+                    LVDataPoint::TimeElapsed(pre_enc.elapsed()),
+                );
                 dbg!(bs_lock.duration());
                 dbg!(bs_lock.frame_index());
                 dbg!(bs_lock.picture_type());

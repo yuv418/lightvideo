@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use log::{error, info};
+use flume::{Receiver, TryRecvError};
+use log::{error, info, warn};
 use winit::{
     dpi::{LogicalSize, PhysicalSize, Size},
     event::*,
@@ -15,11 +16,11 @@ use wgpu_state::WGPUState;
 
 use crate::double_buffer::{self, DoubleBuffer};
 
-pub struct VideoUI {}
+pub struct VideoUI {quit_rx: Receiver<bool>}
 
 impl VideoUI {
-    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(Self {})
+    pub fn new(quit_rx: Receiver<bool>) -> Result<Self, Box<dyn std::error::Error>> {
+        Ok(Self {quit_rx})
     }
 
     pub async fn run(
@@ -37,7 +38,20 @@ impl VideoUI {
 
         let mut state = WGPUState::new(window, double_buffer).await;
 
-        eloop.run(move |event, elwt| match event {
+        eloop.run(move |event, elwt| {
+            match self.quit_rx.try_recv() {
+                Ok(val) if val => {
+                    info!("Ctrl-c received, statistics logged, quitting...");
+                            elwt.exit()
+                }
+                Err(e) => {
+                    if e != TryRecvError::Empty {
+                        error!("quit_rx from statistics module gave {:?}", e)
+                    }
+                }
+                _ => warn!("quit_rx gave false value!"),
+            }
+            match event {
             Event::WindowEvent { ref event, .. } => {
                 if !state.input(event) {
                     match event {
@@ -79,7 +93,7 @@ impl VideoUI {
             }
             Event::AboutToWait => state.window().request_redraw(),
             _ => {}
-        })?;
+        }})?;
 
         Ok(())
     }

@@ -19,7 +19,7 @@ mod ui;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str("trace, calloop=info, wgpu=info")?.start()?;
 
-    LVStatisticsCollector::start();
+    let quit_rx = LVStatisticsCollector::start();
 
     // Bind value
     match std::env::args().nth(1) {
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             decoder.run(db, pkt_recv);
 
             // Start ui
-            let ui = VideoUI::new()?;
+            let ui = VideoUI::new(quit_rx)?;
             ui.run(db_ui).block_on()?;
         }
         None => println!("Usage: ./client addr"),

@@ -16,7 +16,7 @@ use webrtc_util::{Marshal, MarshalSize};
 
 use crate::{
     capture::{linux::LVLinuxCapturer, LVCapturer},
-    encoder::{nvidia::LVNvidiaEncoder, openh264_enc::LVOpenH264Encoder, LVEncoder},
+    encoder,
     packager::LVPackager,
 };
 
@@ -101,10 +101,10 @@ impl Server {
     ) -> Result<(), Box<dyn std::error::Error>> {
         info!("bind addr {}", self.bind_addr);
         let socket = UdpSocket::bind(&self.bind_addr).expect("Failed to make socket");
-        let encoder = LVNvidiaEncoder::new(self.width, self.height, self.bitrate, self.fps as f32)
-            .expect("Failed to make encoder");
-        let mut packager =
-            LVPackager::new(Box::new(encoder), self.fps).expect("Failed to make packager");
+        let encoder =
+            encoder::default_encoder(self.width, self.height, self.bitrate, self.fps as f32)
+                .expect("Failed to make encoder");
+        let mut packager = LVPackager::new(encoder, self.fps).expect("Failed to make packager");
         let mut rtp_pkt = BytesMut::new();
 
         LVStatisticsCollector::register_data("server_packet_sending", LVDataType::TimeSeries);

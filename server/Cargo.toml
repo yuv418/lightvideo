@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 
+[features]
+nvidia-hwenc = ["cudarc", "nvidia-video-codec-sdk"]
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 
@@ -24,8 +27,8 @@ openh264 = { path = "../openh264-rs/openh264" , features = ["encoder"] }
 openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
 
 # Hardware Encode
-cudarc = { git = "https://github.com/ViliamVadocz/cudarc.git", branch = "improve-em-api" }
-nvidia-video-codec-sdk = { path = "../nvidia-video-codec-sdk" }
+cudarc = { git = "https://github.com/ViliamVadocz/cudarc.git", branch = "improve-em-api", optional=true }
+nvidia-video-codec-sdk = { path = "../nvidia-video-codec-sdk", optional=true }
 
 # Networking
 # s2n-quic = "1"

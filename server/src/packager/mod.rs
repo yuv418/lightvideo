@@ -1,9 +1,9 @@
-use std::{collections::VecDeque, time::Instant};
+use std::{collections::VecDeque, fs::File, io::Write, time::Instant};
 
 use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
 use image::{ImageBuffer, Rgb};
-use log::debug;
+use log::{debug, trace};
 use openh264::formats::{YUVBuffer, YUVSource};
 use rand::Rng;
 use rtp::{
@@ -27,28 +27,24 @@ const SAMPLE_RATE: u32 = 90000;
 
 // Encode -> RTP Encapsulation -> Encrypt (skip for now) -> Error Correct (skip for now)
 pub struct LVPackager {
-    encoder: LVEncoder,
+    encoder: Box<dyn LVEncoder>,
     h264_bitstream_writer: Writer<BytesMut>,
     yuv_buffer: YUVBuffer,
 
     // TODO: Can we minimize the number of heap allocations with this?
     rtp_queue: VecDeque<Packet>,
     packetizer: Box<dyn Packetizer>,
+    file: File,
     fps: u32,
 }
 
 //
 impl LVPackager {
-    pub fn new(encoder: LVEncoder, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new(encoder: Box<dyn LVEncoder>, fps: u32) -> Result<Self, Box<dyn std::error::Error>> {
         let width = encoder.width() as usize;
         let height = encoder.height() as usize;
         let mut rand = rand::thread_rng();
-        
-        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data(
-            "server_bitstream_buffer_write",
-            LVDataType::TimeSeries,
-        );
+
         LVStatisticsCollector::register_data("server_packetization", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("server_queuing", LVDataType::TimeSeries);
 
@@ -66,6 +62,7 @@ impl LVPackager {
                 Box::new(new_random_sequencer()),
                 SAMPLE_RATE,
             )),
+            file: File::create("cap.h264")?,
             fps,
         })
     }
@@ -78,100 +75,47 @@ impl LVPackager {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pre_enc = Instant::now();
         // Convert RGBA8 to YUV420
-        let src_fmt = ImageFormat {
-            pixel_format: dcv_color_primitives::PixelFormat::Bgra,
-            color_space: ColorSpace::Rgb,
-            num_planes: 1,
-        };
-        let dst_fmt = ImageFormat {
-            pixel_format: dcv_color_primitives::PixelFormat::I420,
-            color_space: ColorSpace::Bt601,
-            num_planes: 3,
-        };
-
-
-        let sizes: &mut [usize] = &mut [0usize; 3];
-        debug!("frame width {} height {}", buffer.width(), buffer.height());
-        get_buffers_size(buffer.width(), buffer.height(), &dst_fmt, None, sizes)?;
-        debug!(
-            "{:?} and yuv buffer capacity is {}",
-            sizes,
-            self.yuv_buffer.yuv.capacity()
-        );
-
-        let src_sizes: &mut [usize] = &mut [0usize; 1];
-        get_buffers_size(buffer.width(), buffer.height(), &src_fmt, None, src_sizes)?;
-        debug!(
-            "{:?} and src buffer capacity is {}",
-            src_sizes,
-            buffer.len(),
-        );
-
-        let src_strides: &[usize] = &[4 * (buffer.width() as usize)];
-
-        let (mut y_slice, uv_slice) = self.yuv_buffer.yuv.split_at_mut(sizes[0]);
-        let (mut u_slice, mut v_slice) = uv_slice.split_at_mut(sizes[1]);
-
-        convert_image(
-            buffer.width(),
-            buffer.height(),
-            &src_fmt,
-            Some(src_strides),
-            &[&buffer.into_raw()],
-            &dst_fmt,
-            None,
-            &mut [&mut y_slice, &mut u_slice, &mut v_slice],
-        )?;
+        self.encoder.convert_frame(buffer, &mut self.yuv_buffer);
         debug!("convert image sequence is {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
-        let bit_stream = self.encoder.encode_frame(&self.yuv_buffer, timestamp)?;
-        LVStatisticsCollector::update_data(
-            "server_encode_frame",
-            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
-        );
-        debug!("h264 bit stream layer count is {}", bit_stream.num_layers());
-
-        debug!("bit stream is {:?}", bit_stream.to_vec());
-
-        let pre_enc = Instant::now();
-        // Delete the old packet.
-        self.h264_bitstream_writer.get_mut().clear();
-
-        // TODO how to reserve the memory in advance?
-
-        // Put in the bitstream buffer
-        let _ = bit_stream.write(&mut self.h264_bitstream_writer);
+        let bit_stream = self.encoder.encode_frame(
+            &self.yuv_buffer,
+            timestamp,
+            &mut self.h264_bitstream_writer,
+        )?;
 
         debug!(
             "bitstream buffer len after write is {}",
             self.h264_bitstream_writer.get_ref().len(),
-        );
-        LVStatisticsCollector::update_data(
-            "server_bitstream_buffer_write",
-            LVDataPoint::TimeElapsed(pre_enc.elapsed()),
         );
 
         // Extract RTP and put in queue from the bytes
         // The split will be dropped at the end of this function, so when we clear the bitstream writer and write to it later, it will use the whole buffer.
         let pre_enc = Instant::now();
         let unpacketized_payload: Bytes = Bytes::from(self.h264_bitstream_writer.get_mut().split());
+
+        // write this for debugging purposes
+        // self.file.write(&unpacketized_payload);
+
         debug!("unpacketized_payload len is {}", unpacketized_payload.len());
 
         let payloads = self
             .packetizer
             .packetize(&unpacketized_payload, SAMPLE_RATE / self.fps)?;
+
         LVStatisticsCollector::update_data(
             "server_packetization",
             LVDataPoint::TimeElapsed(pre_enc.elapsed()),
         );
+
         debug!("packetization: {:.4?}", pre_enc.elapsed());
 
         let pre_enc = Instant::now();
         let mut packet_count = 0;
         for payload in payloads {
             // Marshal into RTP.
-            debug!("packet payload data: {:?}", &payload.payload.as_ref());
+            trace!("packet payload data: {:?}", &payload.payload.as_ref());
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }

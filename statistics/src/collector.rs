@@ -20,7 +20,7 @@ lazy_static! {
 }
 
 impl LVStatisticsCollector {
-    pub fn start() {
+    pub fn start() -> Receiver<bool> {
         let (quit_tx, quit_rx) = flume::bounded::<bool>(1);
 
         let t = thread::Builder::new()
@@ -45,13 +45,12 @@ impl LVStatisticsCollector {
 
         ctrlc::set_handler(move || {
             info!("Writing statistics after ctrl-c");
+            // std::process::exit(0);
             let _ = STAT_CH.0.send(LVStatisticsMessage::Quit);
-            if let Ok(true) = quit_rx.recv() {
-                info!("aggregation finished.");
-                std::process::exit(0)
-            }
         })
         .expect("Failed to set ctrlc handler");
+
+        quit_rx
     }
 
     pub fn register_data(key: &str, data_type: LVDataType) {

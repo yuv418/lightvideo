@@ -63,6 +63,7 @@ impl LVNetwork {
 
         let sock: UdpSocket = sock.into();
         debug!("starting thread for socket, listening on {}", addr);
+
         loop {
             // By using the packet push, we avoid allocating on the heap every iteration.
             match packet_push.try_send_ref() {

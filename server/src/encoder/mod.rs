@@ -1,75 +1,56 @@
 use std::os::raw::c_int;
 
-use openh264::{
-    encoder::{EncodedBitStream, Encoder},
-    formats::YUVSource,
-    Error as OpenH264Error, Timestamp,
-};
+use bytes::{buf::Writer, BytesMut};
+use image::{ImageBuffer, Rgb};
+use openh264::formats::YUVBuffer;
 
-use openh264_sys2::{SEncParamExt, LOW_COMPLEXITY, RC_BITRATE_MODE};
+use self::openh264_enc::LVOpenH264Encoder;
 
-pub struct LVEncoder {
-    encoder: Encoder,
+#[cfg(feature = "nvidia-hwenc")]
+pub mod nvidia;
+
+pub mod openh264_enc;
+
+pub fn default_encoder(
     width: u32,
     height: u32,
+    bitrate: u32,
+    fps: f32,
+) -> Result<Box<dyn LVEncoder>, Box<dyn std::error::Error>> {
+    let enc = LVOpenH264Encoder::new(width, height, bitrate, fps)?;
+
+    #[cfg(feature = "nvidia-hwenc")]
+    let enc = nvidia::LVNvidiaEncoder::new(width, height, bitrate, fps)?;
+
+    Ok(Box::new(enc))
 }
 
-// The primary purpose of this is to tune the Encoder parameters in one place.
-impl LVEncoder {
-    pub fn new(
+pub trait LVEncoder {
+    fn new(
         width: u32,
         height: u32,
         bitrate: u32,
         framerate: f32,
-    ) -> Result<Self, OpenH264Error> {
-        let mut params = SEncParamExt::default();
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: Sized;
 
-        params.iPicWidth = width as c_int;
-        params.iPicHeight = height as c_int;
-        // params.iRCMode = RC_BITRATE_MODE;
-        params.iComplexityMode = LOW_COMPLEXITY;
-        params.bEnableFrameSkip = false;
-        params.iTargetBitrate = bitrate as c_int;
-        params.bEnableDenoise = true;
-        params.fMaxFrameRate = framerate;
-        params.bEnableAdaptiveQuant = false;
-        params.iMultipleThreadIdc = 8;
-        params.iEntropyCodingModeFlag = 0;
-        // GOP Size
-        params.uiIntraPeriod = 120;
+    fn width(&self) -> u32;
+    fn height(&self) -> u32;
 
-        // Quantization parameters?
-        params.iMinQp = 21;
-        params.iMinQp = 35;
-
-        let _true_val = true;
-        let _false_val = false;
-
-        unsafe {
-            let mut encoder = Encoder::with_raw_config(params)?;
-            let _raw_api = encoder.raw_api();
-            // raw_api.set_option(ENCODER_OPTION_TRACE_LEVEL, addr_of_mut!(false_val).cast());
-            // raw_api.set_option(ENCODER_OPTION_DATAFORMAT, addr_of_mut!(true_val).cast());
-            Ok(LVEncoder {
-                encoder,
-                width,
-                height,
-            })
-        }
-    }
-    pub fn width(&self) -> u32 {
-        self.width
-    }
-    pub fn height(&self) -> u32 {
-        self.height
-    }
-    pub fn encode_frame<T: YUVSource>(
+    // Convert the RGBA/whatever frame to something that the codec will understand
+    fn convert_frame(
         &mut self,
-        buffer: &T,
+        input_buffer: ImageBuffer<Rgb<u8>, Vec<u8>>,
+        output_buffer: &mut YUVBuffer,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+
+    // TODO: Make our own version of YUVSource that maybe has an "into YUVSource" kind of thing.
+    fn encode_frame(
+        &mut self,
+        buffer: &YUVBuffer,
         // Milliseconds from start.
         timestamp: u64,
-    ) -> Result<EncodedBitStream, OpenH264Error> {
-        self.encoder
-            .encode_at(buffer, Timestamp::from_millis(timestamp))
-    }
+        h264_buffer: &mut Writer<BytesMut>,
+    ) -> Result<(), Box<dyn std::error::Error>>;
 }

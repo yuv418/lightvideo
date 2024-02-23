@@ -17,9 +17,9 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("debug, wgpu=info")?.start()?;
+    Logger::try_with_str("trace, calloop=info, wgpu=info")?.start()?;
 
-    LVStatisticsCollector::start();
+    let quit_rx = LVStatisticsCollector::start();
 
     // Bind value
     match std::env::args().nth(1) {
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db_ui = db.clone();
 
             // Set up mpsc
-            let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacket>(100);
+            let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacket>(1000);
 
             let receiver = LVNetwork::new(&addr);
             let decoder = LVDecoder::new();
@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             decoder.run(db, pkt_recv);
 
             // Start ui
-            let ui = VideoUI::new()?;
+            let ui = VideoUI::new(quit_rx)?;
             ui.run(db_ui).block_on()?;
         }
         None => println!("Usage: ./client addr"),

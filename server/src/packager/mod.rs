@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, fs::File, io::Write, time::Instant};
+use std::{collections::VecDeque, fs::File, io::Write, net::UdpSocket, time::Instant};
 
 use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
@@ -19,6 +19,8 @@ use statistics::{
 };
 
 use crate::encoder::LVEncoder;
+
+pub mod packet;
 
 const MTU_SIZE: usize = 1200;
 const SAMPLE_RATE: u32 = 90000;
@@ -116,6 +118,10 @@ impl LVPackager {
         for payload in payloads {
             // Marshal into RTP.
             trace!("packet payload data: {:?}", &payload.payload.as_ref());
+            trace!(
+                "packet payload data len {}",
+                &payload.payload.as_ref().len()
+            );
             self.rtp_queue.push_front(payload);
             packet_count += 1;
         }
@@ -127,6 +133,9 @@ impl LVPackager {
 
         Ok(())
     }
+
+    pub fn send_next_pkt(&mut self, socket: &mut UdpSocket, target_addr: &str) {}
+
     // Get the next RTP packet to send over the network
     pub fn pop_rtp(&mut self) -> Option<Packet> {
         self.rtp_queue.pop_back()

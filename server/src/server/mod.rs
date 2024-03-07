@@ -138,18 +138,8 @@ impl Server {
             }
 
             let loop_pkg = Instant::now();
-            while let Some(rtp) = packager.pop_rtp() {
-                rtp_pkt.resize(rtp.marshal_size(), 0);
-                debug!("rtp_pkt capacity {}", rtp_pkt.capacity());
-                debug!("rtp_pkt len {}", rtp_pkt.len());
-                debug!(
-                    "rtp_pkt remaining_mut before {} and marshal_size {}",
-                    (&mut rtp_pkt).remaining_mut(),
-                    rtp.marshal_size()
-                );
-                debug!("rtp_pkt remaining_mut after {}", rtp_pkt.remaining_mut());
-                rtp.marshal_to(&mut rtp_pkt)?;
-                match socket.send_to(&rtp_pkt, &self.target_addr) {
+            while packager.has_rtp() {
+                match packager.send_next_pkt(&socket, &self.target_addr) {
                     Ok(bytes) => debug!("sent {} bytes to addr", bytes),
                     Err(e) => error!("send_to returned {:?}", e),
                 }

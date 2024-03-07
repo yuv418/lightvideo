@@ -20,6 +20,8 @@ use statistics::{
 
 use crate::encoder::LVEncoder;
 
+use self::packet::LVErasureManager;
+
 pub mod packet;
 
 const MTU_SIZE: usize = 1200;
@@ -36,6 +38,7 @@ pub struct LVPackager {
     // TODO: Can we minimize the number of heap allocations with this?
     rtp_queue: VecDeque<Packet>,
     packetizer: Box<dyn Packetizer>,
+    erasure_manager: LVErasureManager,
     file: File,
     fps: u32,
 }
@@ -66,6 +69,7 @@ impl LVPackager {
             )),
             file: File::create("cap.h264")?,
             fps,
+            erasure_manager: LVErasureManager::new()?,
         })
     }
 
@@ -134,11 +138,21 @@ impl LVPackager {
         Ok(())
     }
 
-    pub fn send_next_pkt(&mut self, socket: &mut UdpSocket, target_addr: &str) {}
+    pub fn send_next_pkt(
+        &mut self,
+        socket: &UdpSocket,
+        target_addr: &str,
+    ) -> Result<usize, Box<dyn std::error::Error>> {
+        if let Some(pkt) = self.rtp_queue.pop_back() {
+            self.erasure_manager
+                .send_lv_packet(socket, target_addr, &pkt.payload, false)?;
+        }
+        Ok(0)
+    }
 
     // Get the next RTP packet to send over the network
-    pub fn pop_rtp(&mut self) -> Option<Packet> {
-        self.rtp_queue.pop_back()
+    pub fn has_rtp(&mut self) -> bool {
+        self.rtp_queue.is_empty()
     }
 
     // pub fn encrypt();

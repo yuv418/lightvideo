@@ -40,7 +40,7 @@ reed-solomon-simd = "2.2"
 bytes = "1"
 ring = "0.17.5"
 rand = "0.8"
-bytemuck = "1"
+bytemuck = { version = "1", features=["derive", "min_const_generics"] }
 lazy_static = "1"
 
 # Logging

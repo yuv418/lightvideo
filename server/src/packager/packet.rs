@@ -26,7 +26,7 @@ pub struct LVErasureManager {
 }
 
 impl LVErasureManager {
-    fn init() -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             enc: ReedSolomonEncoder::new(
                 EC_RATIO_REGULAR_PACKETS,
@@ -42,13 +42,13 @@ impl LVErasureManager {
     // return a pair, where the first packet is the payload given as an LVPacket and
     // the second packet is an Option<LVPacket> that contains recovery data
     // if the encoder gave us some.
-    fn send_lv_packet(
+    pub fn send_lv_packet(
         &mut self,
-        socket: &mut UdpSocket,
+        socket: &UdpSocket,
         target_addr: &str,
         payload: &[u8],
         recovery_pkt: bool,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<usize, Box<dyn std::error::Error>> {
         let pk = LVPacket {
             block_id: self.current_block_id,
             fragment_index: self.current_fragment_index,
@@ -58,16 +58,19 @@ impl LVErasureManager {
             payload,
         };
 
-        socket.send_to(bytemuck::bytes_of(&pk), target_addr);
+        let pk_pay = unsafe {
+            ::core::slice::from_raw_parts(
+                (&pk as *const LVPacket) as *const u8,
+                ::core::mem::size_of::<LVPacket>(),
+            )
+        };
 
-        Ok(())
+        Ok(socket.send_to(pk_pay, target_addr)?)
     }
-
-    fn send_pkts_over_network() {}
 }
 
 #[repr(C)]
-#[derive(Debug, Clone, bytemuck::NoUninit, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct LVPacket<'a> {
     // Every block will have a unique error correcting ID.
     // This will allow us to know which packets go with which blocks.
@@ -85,20 +88,3 @@ pub struct LVPacket<'a> {
     // Actual data
     payload: &'a [u8],
 }
-
-/*pub struct JoinedArray {
-    slice_left: Bytes,
-    slice_right: Bytes,
-}
-
-impl Index<usize> for JoinedArray {
-    type Output = u8;
-
-    fn index(&self, index: usize) -> &u8 {
-        if index < self.slice_left.len() {
-            &self.slice_left[index]
-        } else {
-            &self.slice_right[index - self.slice_left.len()]
-        }
-    }
-}*/

@@ -12,12 +12,12 @@ pub struct LVNetwork {
 }
 
 #[derive(Clone)]
-pub struct LVPacket {
+pub struct LVPacketHolder {
     pub payload: BytesMut,
     pub amt: usize,
 }
 
-impl Default for LVPacket {
+impl Default for LVPacketHolder {
     fn default() -> Self {
         Self {
             payload: {
@@ -37,7 +37,7 @@ impl LVNetwork {
         }
     }
 
-    pub fn run(&self, packet_push: Sender<LVPacket>) {
+    pub fn run(&self, packet_push: Sender<LVPacketHolder>) {
         let addr = self.addr.clone();
         thread::Builder::new()
             .name("network_thread".to_string())
@@ -51,7 +51,7 @@ impl LVNetwork {
     }
 
     fn socket_loop(
-        packet_push: Sender<LVPacket>,
+        packet_push: Sender<LVPacketHolder>,
         addr: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let sock = UdpSocket::bind(addr)?;

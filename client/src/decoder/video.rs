@@ -14,7 +14,9 @@ use std::{sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
-use crate::decoder::network::LVPacket;
+use net::packet::LVPacket;
+
+use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
 
 pub struct LVDecoder {}
@@ -25,7 +27,7 @@ impl LVDecoder {
         Self {}
     }
 
-    pub fn run(&self, double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacket>) {
+    pub fn run(&self, double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacketHolder>) {
         thread::Builder::new()
             .name("decoder_thread".to_string())
             .spawn(move || {
@@ -39,7 +41,7 @@ impl LVDecoder {
 
     pub fn decode_loop(
         double_buffer: Arc<DoubleBuffer>,
-        packet_recv: Receiver<LVPacket>,
+        packet_recv: Receiver<LVPacketHolder>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
 
@@ -71,6 +73,7 @@ impl LVDecoder {
             // TODO don't copy. We slice the buffer so it only uses the part of the buffer that was written to by the socket receive.
             let time = Instant::now();
             let data = packet_recv.recv_ref();
+
             if let None = data {
                 error!("the network push buffer has closed");
                 return Err(Box::new(std::io::Error::new(
@@ -80,11 +83,15 @@ impl LVDecoder {
             }
             // horrible rust coding practices 101
             let data_ext = data.unwrap();
-            let mut bytes = &data_ext.payload[..data_ext.amt];
 
+            // extract the data into an LVPacket
+            let mut lvpkt: LVPacket =
+                unsafe { std::ptr::read(data_ext.payload.as_ptr() as *const _) };
+
+            debug!("Received lvpacket {:?}", lvpkt);
             debug!("recved data from socket thread");
             // turn into packet
-            let packet = Packet::unmarshal(&mut bytes)?;
+            let packet = Packet::unmarshal(&mut lvpkt.payload)?;
 
             debug!("packet timestamp {}", packet.header.timestamp);
 

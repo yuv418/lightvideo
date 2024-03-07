@@ -10,6 +10,8 @@ use lazy_static::lazy_static;
 use reed_solomon_simd::ReedSolomonEncoder;
 use std::{net::UdpSocket, ops::Index, slice::SliceIndex};
 
+use net::packet::LVPacket;
+
 use super::MTU_SIZE;
 
 // TODO: Don't we want a packet size?
@@ -49,6 +51,8 @@ impl LVErasureManager {
         payload: &[u8],
         recovery_pkt: bool,
     ) -> Result<usize, Box<dyn std::error::Error>> {
+        // self.enc.add_original_shard(payload)?;
+
         let pk = LVPacket {
             block_id: self.current_block_id,
             fragment_index: self.current_fragment_index,
@@ -67,24 +71,4 @@ impl LVErasureManager {
 
         Ok(socket.send_to(pk_pay, target_addr)?)
     }
-}
-
-#[repr(C)]
-#[derive(Debug, Clone, Copy)]
-pub struct LVPacket<'a> {
-    // Every block will have a unique error correcting ID.
-    // This will allow us to know which packets go with which blocks.
-    block_id: u32,
-    // The minimum number of fragments that are required in this fragment sequence
-    // to decode the full thing
-    min_fragment_size: usize,
-    // Allows us to determine if recovery packet or not, which is required for decoding
-    recovery_pkt: bool,
-    // Required for the decoding as well --- used to determine the # of the recovery
-    // or regular packet (I would imagine that this is for polynomial interpolation or something)
-    fragment_index: u32,
-    // Given length of data
-    payload_len: usize,
-    // Actual data
-    payload: &'a [u8],
 }

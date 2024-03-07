@@ -57,3 +57,6 @@ flume = "0.11"
 
 # Statistics
 statistics = { path = "../statistics" }
+
+# Shared packets
+net = { path = "../net" }

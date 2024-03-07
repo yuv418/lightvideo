@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use decoder::{
-    network::{LVNetwork, LVPacket},
+    network::{LVNetwork, LVPacketHolder},
     video::LVDecoder,
 };
 use double_buffer::DoubleBuffer;
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let db_ui = db.clone();
 
             // Set up mpsc
-            let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacket>(1000);
+            let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacketHolder>(1000);
 
             let receiver = LVNetwork::new(&addr);
             let decoder = LVDecoder::new();

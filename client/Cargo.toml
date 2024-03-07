@@ -37,3 +37,6 @@ parking_lot = "0.12"
 
 # Stats
 statistics = { path = "../statistics" }
+
+# Net
+net = { path = "../net" }

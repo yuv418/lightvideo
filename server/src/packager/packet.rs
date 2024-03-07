@@ -7,6 +7,7 @@
 
 use bytes::Bytes;
 use lazy_static::lazy_static;
+use log::debug;
 use reed_solomon_simd::ReedSolomonEncoder;
 use std::{net::UdpSocket, ops::Index, slice::SliceIndex};
 
@@ -68,6 +69,8 @@ impl LVErasureManager {
                 ::core::mem::size_of::<LVPacket>(),
             )
         };
+
+        debug!("sent lv packet as {:?}", pk_pay);
 
         Ok(socket.send_to(pk_pay, target_addr)?)
     }

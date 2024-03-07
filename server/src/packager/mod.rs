@@ -152,7 +152,7 @@ impl LVPackager {
 
     // Get the next RTP packet to send over the network
     pub fn has_rtp(&mut self) -> bool {
-        self.rtp_queue.is_empty()
+        !self.rtp_queue.is_empty()
     }
 
     // pub fn encrypt();

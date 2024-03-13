@@ -150,7 +150,7 @@ impl LVPackager {
         if let Some(pkt) = self.rtp_queue.pop_back() {
             return self
                 .erasure_manager
-                .send_lv_packet(socket, target_addr, pkt, false);
+                .send_lv_packet(socket, target_addr, pkt);
         } else {
             Ok(0)
         }

@@ -27,11 +27,11 @@ pub struct LVErasureInformation {
 }
 
 impl LVErasureInformation {
-    pub fn no_bytes() -> usize {
+    pub const fn no_bytes() -> usize {
         3 * size_of::<u32>() + size_of::<bool>()
     }
 
-    pub fn to_bytes(self, mut buf: &mut [u8]) {
+    pub fn to_bytes(self, buf: &mut [u8]) {
         let mut i = 0;
         for byt in self.block_id.to_be_bytes() {
             buf[i] = byt;
@@ -43,7 +43,7 @@ impl LVErasureInformation {
             i += 1;
         }
 
-        buf.put_u8(self.recovery_pkt as u8);
+        buf[i] = self.recovery_pkt as u8;
         i += 1;
 
         for byt in self.fragment_index.to_be_bytes() {

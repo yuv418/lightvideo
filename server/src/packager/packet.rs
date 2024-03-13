@@ -70,6 +70,10 @@ impl LVErasureManager {
             (self.current_regular_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS;
 
         if self.current_regular_fragment_index == 0 {
+            self.current_block_id += 1;
+        }
+
+        if self.current_regular_fragment_index == 1 {
             debug!("obtaining recovery data from reed solomon code");
 
             self.current_recovery_fragment_index =
@@ -110,8 +114,6 @@ impl LVErasureManager {
             debug!("send {} RECOVERY bytes to {}", bytes, target_addr);
 
             self.largest_sized_payload = 0;
-
-            self.current_block_id += 1;
         }
 
         let marshal_size = rtp.marshal_size();

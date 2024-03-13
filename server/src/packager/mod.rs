@@ -148,11 +148,9 @@ impl LVPackager {
         target_addr: &str,
     ) -> Result<usize, Box<dyn std::error::Error>> {
         if let Some(pkt) = self.rtp_queue.pop_back() {
-            self.rtp_pkt.resize(pkt.marshal_size(), 0);
-            pkt.marshal_to(&mut self.rtp_pkt)?;
             return self
                 .erasure_manager
-                .send_lv_packet(socket, target_addr, &self.rtp_pkt, false);
+                .send_lv_packet(socket, target_addr, pkt, false);
         } else {
             Ok(0)
         }

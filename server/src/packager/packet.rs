@@ -9,7 +9,9 @@ use bytes::{BufMut, Bytes, BytesMut};
 use lazy_static::lazy_static;
 use log::{debug, trace};
 use reed_solomon_simd::ReedSolomonEncoder;
+use rtp::packet::Packet;
 use std::{net::UdpSocket, ops::Index, slice::SliceIndex, time::SystemTime};
+use webrtc_util::{Marshal, MarshalSize};
 
 use net::packet::LVErasureInformation;
 
@@ -55,7 +57,7 @@ impl LVErasureManager {
         &mut self,
         socket: &UdpSocket,
         target_addr: &str,
-        payload: &[u8],
+        rtp: Packet,
         recovery_pkt: bool,
     ) -> Result<usize, Box<dyn std::error::Error>> {
         // self.enc.add_original_shard(payload)?;
@@ -77,23 +79,26 @@ impl LVErasureManager {
             self.current_block_id += 1;
         }
 
+        let marshal_size = rtp.marshal_size();
+
         trace!(
             "size of bytes of erasure information is {}",
             LVErasureInformation::no_bytes()
         );
         trace!(
             "should send {} bytes",
-            LVErasureInformation::no_bytes() + payload.len()
+            LVErasureInformation::no_bytes() + marshal_size
         );
 
-        trace!("payload is {:?}", payload);
+        // trace!("payload is {:?}", payload);
 
         pk.to_bytes(&mut self.pkt_data);
-        self.pkt_data[(LVErasureInformation::no_bytes())
-            ..(LVErasureInformation::no_bytes() + payload.len())]
-            .clone_from_slice(payload);
+        rtp.marshal_to(
+            &mut self.pkt_data[(LVErasureInformation::no_bytes())
+                ..(LVErasureInformation::no_bytes() + marshal_size)],
+        );
 
-        let send_slice = &self.pkt_data[0..(LVErasureInformation::no_bytes() + payload.len())];
+        let send_slice = &self.pkt_data[0..(LVErasureInformation::no_bytes() + marshal_size)];
         debug!("sent lv packet as {:?}", send_slice);
 
         Ok(socket.send_to(send_slice, target_addr)?)

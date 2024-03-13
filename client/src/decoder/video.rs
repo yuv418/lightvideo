@@ -5,6 +5,7 @@ use openh264::{
     decoder::{Decoder, DecoderConfig},
     formats::YUVSource,
 };
+use reed_solomon_simd::ReedSolomonDecoder;
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
 use statistics::{
     collector::LVStatisticsCollector,
@@ -14,7 +15,9 @@ use std::{sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
-use net::packet::LVErasureInformation;
+use net::packet::{
+    LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+};
 
 use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
@@ -67,6 +70,12 @@ impl LVDecoder {
             color_space: ColorSpace::Rgb,
             num_planes: 1,
         };
+
+        let rs_decoder = ReedSolomonDecoder::new(
+            EC_RATIO_REGULAR_PACKETS as usize,
+            EC_RATIO_RECOVERY_PACKETS as usize,
+            SIMD_PACKET_SIZE as usize,
+        )?;
 
         // TODO what happened to re-ordering RTP packets?
         loop {

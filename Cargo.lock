@@ -354,6 +354,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "pollster",
  "reed-solomon-novelpoly",
+ "reed-solomon-simd",
  "rtp",
  "socket2",
  "statistics",

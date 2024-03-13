@@ -4,7 +4,7 @@ use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
 use image::{ImageBuffer, Rgb};
 use log::{debug, trace};
-use net::packet::LVErasureInformation;
+use net::packet::{LVErasureInformation, MTU_SIZE};
 use openh264::formats::{YUVBuffer, YUVSource};
 use rand::Rng;
 use rtp::{

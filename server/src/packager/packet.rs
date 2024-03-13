@@ -13,9 +13,9 @@ use rtp::packet::Packet;
 use std::{net::UdpSocket, ops::Index, slice::SliceIndex, time::SystemTime};
 use webrtc_util::{Marshal, MarshalSize};
 
-use net::packet::LVErasureInformation;
-
-use super::MTU_SIZE;
+use net::packet::{
+    LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+};
 
 // TODO: Don't we want a packet size?
 

@@ -19,6 +19,7 @@ log = "0.4"
 flexi_logger = "0.27"
 
 # Decoding
+reed-solomon-simd = "2.2"
 dcv-color-primitives = "0.6"
 openh264 = { path = "../openh264-rs/openh264" , features = ["decoder", "backtrace"] }
 openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }

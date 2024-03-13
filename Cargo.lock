@@ -1428,6 +1428,12 @@ dependencies = [
 [[package]]
 name = "net"
 version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "log",
+ "rtp",
+]
 
 [[package]]
 name = "nix"

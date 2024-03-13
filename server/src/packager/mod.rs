@@ -55,7 +55,7 @@ impl LVPackager {
 
         Ok(Self {
             encoder,
-            // TODO: Default??
+            // TODO: Default?       ?
             h264_bitstream_writer: BytesMut::new().writer(),
             rtp_queue: VecDeque::new(),
             yuv_buffer: YUVBuffer::new(width, height),
@@ -144,10 +144,12 @@ impl LVPackager {
         target_addr: &str,
     ) -> Result<usize, Box<dyn std::error::Error>> {
         if let Some(pkt) = self.rtp_queue.pop_back() {
-            self.erasure_manager
-                .send_lv_packet(socket, target_addr, &pkt.payload, false)?;
+            return self
+                .erasure_manager
+                .send_lv_packet(socket, target_addr, &pkt.payload, false);
+        } else {
+            Ok(0)
         }
-        Ok(0)
     }
 
     // Get the next RTP packet to send over the network

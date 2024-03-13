@@ -5,39 +5,45 @@
 //
 // We then use the error-correcting code library to generate exactly EC_RATIO_RECOVERY_PACKETS packets,
 
-use bytes::Bytes;
+use bytes::{BufMut, Bytes, BytesMut};
 use lazy_static::lazy_static;
-use log::debug;
+use log::{debug, trace};
 use reed_solomon_simd::ReedSolomonEncoder;
-use std::{net::UdpSocket, ops::Index, slice::SliceIndex};
+use std::{net::UdpSocket, ops::Index, slice::SliceIndex, time::SystemTime};
 
-use net::packet::LVPacket;
+use net::packet::LVErasureInformation;
 
 use super::MTU_SIZE;
 
 // TODO: Don't we want a packet size?
 
-const EC_RATIO_RECOVERY_PACKETS: usize = 1;
-const EC_RATIO_REGULAR_PACKETS: usize = 3;
+const EC_RATIO_RECOVERY_PACKETS: u32 = 1;
+const EC_RATIO_REGULAR_PACKETS: u32 = 3;
 
-const SIMD_PACKET_SIZE: usize = ((MTU_SIZE + 63) / 64) * 64;
+const SIMD_PACKET_SIZE: u32 = ((MTU_SIZE as u32 + 63) / 64) * 64;
 
 pub struct LVErasureManager {
     enc: ReedSolomonEncoder,
     current_block_id: u32,
-    current_fragment_index: u32,
+    current_regular_fragment_index: u32,
+    current_recovery_fragment_index: u32,
+    pkt_data: BytesMut,
 }
 
 impl LVErasureManager {
     pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
             enc: ReedSolomonEncoder::new(
-                EC_RATIO_REGULAR_PACKETS,
-                EC_RATIO_RECOVERY_PACKETS,
-                SIMD_PACKET_SIZE,
+                EC_RATIO_REGULAR_PACKETS as usize,
+                EC_RATIO_RECOVERY_PACKETS as usize,
+                SIMD_PACKET_SIZE as usize,
             )?,
             current_block_id: 0,
-            current_fragment_index: 0,
+            current_regular_fragment_index: 0,
+            current_recovery_fragment_index: 0,
+            pkt_data: BytesMut::zeroed(
+                SIMD_PACKET_SIZE as usize + LVErasureInformation::no_bytes(),
+            ),
         })
     }
 
@@ -54,24 +60,39 @@ impl LVErasureManager {
     ) -> Result<usize, Box<dyn std::error::Error>> {
         // self.enc.add_original_shard(payload)?;
 
-        let pk = LVPacket {
+        let pk = LVErasureInformation {
             block_id: self.current_block_id,
-            fragment_index: self.current_fragment_index,
+            fragment_index: self.current_regular_fragment_index,
             min_fragment_size: EC_RATIO_REGULAR_PACKETS,
             recovery_pkt,
-            payload_len: payload.len(),
-            payload,
         };
 
-        let pk_pay = unsafe {
-            ::core::slice::from_raw_parts(
-                (&pk as *const LVPacket) as *const u8,
-                ::core::mem::size_of::<LVPacket>(),
-            )
-        };
+        trace!("lv erasure information {:?}", pk);
 
-        debug!("sent lv packet as {:?}", pk_pay);
+        // Every time we hit the end of the number of recovery packets, we increment the block id.
+        self.current_regular_fragment_index =
+            (self.current_regular_fragment_index + 1) % EC_RATIO_RECOVERY_PACKETS;
 
-        Ok(socket.send_to(pk_pay, target_addr)?)
+        if self.current_regular_fragment_index == 0 {
+            self.current_block_id += 1;
+        }
+
+        trace!(
+            "size of bytes of erasure information is {}",
+            LVErasureInformation::no_bytes()
+        );
+        trace!(
+            "should send {} bytes",
+            LVErasureInformation::no_bytes() + payload.len()
+        );
+        pk.to_bytes(&mut self.pkt_data);
+        self.pkt_data[(LVErasureInformation::no_bytes() + 1)
+            ..(LVErasureInformation::no_bytes() + 1 + payload.len())]
+            .clone_from_slice(payload);
+
+        let send_slice = &self.pkt_data[0..(LVErasureInformation::no_bytes() + payload.len())];
+        debug!("sent lv packet as {:?}", send_slice);
+
+        Ok(socket.send_to(send_slice, target_addr)?)
     }
 }

@@ -48,6 +48,7 @@ impl LVDecoder {
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
 
+        LVStatisticsCollector::register_data("client_packets_out_of_order", LVDataType::Aggregate);
         LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("client_failed_decode_packets", LVDataType::Aggregate);
 
@@ -58,7 +59,7 @@ impl LVDecoder {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
 
-        let mut rtp_prev_timestamp: u32 = 0;
+        let mut rtp_prev_seqnum: u32 = 0;
 
         let src_format = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::I420,
@@ -71,11 +72,13 @@ impl LVDecoder {
             num_planes: 1,
         };
 
-        let rs_decoder = ReedSolomonDecoder::new(
+        let mut rs_decoder = ReedSolomonDecoder::new(
             EC_RATIO_REGULAR_PACKETS as usize,
             EC_RATIO_RECOVERY_PACKETS as usize,
             SIMD_PACKET_SIZE as usize,
         )?;
+
+        let mut rs_fragment_buffer = vec![0; SIMD_PACKET_SIZE as usize];
 
         // TODO what happened to re-ordering RTP packets?
         loop {
@@ -103,6 +106,19 @@ impl LVDecoder {
             let lvheader = LVErasureInformation::from_bytes(&data_ext.payload[0..data_ext.amt]);
             let mut rtp_data = &data_ext.payload[LVErasureInformation::no_bytes()..data_ext.amt];
 
+            // prepare for missing packets by putting every received packet into the decoder.
+
+            rs_fragment_buffer[0..rtp_data.len()].clone_from_slice(rtp_data);
+            rs_fragment_buffer[rtp_data.len()..].fill(0);
+
+            if lvheader.recovery_pkt {
+                rs_decoder
+                    .add_recovery_shard(lvheader.fragment_index as usize, &rs_fragment_buffer);
+                continue;
+            }
+
+            rs_decoder.add_original_shard(lvheader.fragment_index as usize, &rs_fragment_buffer);
+
             debug!("Received lvheader {:?}", lvheader);
             debug!("Received lvdata {:?}", rtp_data);
             debug!("lvdata remaining {}", rtp_data.remaining());
@@ -111,15 +127,21 @@ impl LVDecoder {
             let packet = Packet::unmarshal(&mut rtp_data)?;
 
             debug!("packet timestamp {}", packet.header.timestamp);
+            debug!("packet seqnum {}", packet.header.sequence_number);
 
-            if rtp_prev_timestamp > packet.header.timestamp {
+            if rtp_prev_seqnum + 1 != packet.header.sequence_number as u32 {
                 warn!(
                     "packet out of order: current {} prev {}",
-                    packet.header.timestamp, rtp_prev_timestamp
+                    packet.header.sequence_number, rtp_prev_seqnum
+                );
+
+                LVStatisticsCollector::update_data(
+                    "client_packets_out_of_order",
+                    LVDataPoint::Increment,
                 );
             }
 
-            rtp_prev_timestamp = packet.header.timestamp;
+            rtp_prev_seqnum = packet.header.sequence_number as u32;
 
             let is_partition_head = pkt.is_partition_head(&packet.payload);
             debug!("is partition head {}", is_partition_head);

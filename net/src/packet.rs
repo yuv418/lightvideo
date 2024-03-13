@@ -3,6 +3,13 @@ use std::mem::size_of;
 use bytes::BufMut;
 use log::trace;
 
+const MTU_SIZE: usize = 1200;
+const EC_RATIO_RECOVERY_PACKETS: u32 = 1;
+const EC_RATIO_REGULAR_PACKETS: u32 = 3;
+
+const SIMD_PACKET_SIZE: u32 =
+    ((MTU_SIZE as u32 - LVErasureInformation::no_bytes() as u32 + 63) / 64) * 64;
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct LVErasureInformation {

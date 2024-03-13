@@ -26,7 +26,6 @@ use self::packet::LVErasureManager;
 
 pub mod packet;
 
-const MTU_SIZE: usize = 1200;
 const SAMPLE_RATE: u32 = 90000;
 
 // TODO update the error handling

@@ -19,12 +19,6 @@ use super::MTU_SIZE;
 
 // TODO: Don't we want a packet size?
 
-const EC_RATIO_RECOVERY_PACKETS: u32 = 1;
-const EC_RATIO_REGULAR_PACKETS: u32 = 3;
-
-const SIMD_PACKET_SIZE: u32 =
-    ((MTU_SIZE as u32 - LVErasureInformation::no_bytes() as u32 + 63) / 64) * 64;
-
 pub struct LVErasureManager {
     enc: ReedSolomonEncoder,
     current_block_id: u32,

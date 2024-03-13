@@ -1,4 +1,4 @@
-use bytes::{BufMut, Bytes, BytesMut};
+use bytes::{Buf, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
 use log::{debug, error, info, trace, warn};
 use openh264::{
@@ -14,7 +14,7 @@ use std::{sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
-use net::packet::LVPacket;
+use net::packet::LVErasureInformation;
 
 use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
@@ -83,15 +83,23 @@ impl LVDecoder {
             }
             // horrible rust coding practices 101
             let data_ext = data.unwrap();
+            debug!(
+                "data_ext length is {}",
+                data_ext.payload[0..data_ext.amt].len()
+            );
+            debug!("data_ext is {:?}", &data_ext.payload[0..data_ext.amt]);
 
-            // extract the data into an LVPacket
-            let mut lvpkt: LVPacket =
-                unsafe { std::ptr::read(data_ext.payload.as_ptr() as *const _) };
+            // extract the data into the RTP payload and the lv erasure header
 
-            debug!("Received lvpacket {:?}", lvpkt);
+            let lvheader = LVErasureInformation::from_bytes(&data_ext.payload[0..data_ext.amt]);
+            let mut rtp_data = &data_ext.payload[LVErasureInformation::no_bytes()..data_ext.amt];
+
+            debug!("Received lvheader {:?}", lvheader);
+            debug!("Received lvdata {:?}", rtp_data);
+            debug!("lvdata remaining {}", rtp_data.remaining());
             debug!("recved data from socket thread");
             // turn into packet
-            let packet = Packet::unmarshal(&mut lvpkt.payload)?;
+            let packet = Packet::unmarshal(&mut rtp_data)?;
 
             debug!("packet timestamp {}", packet.header.timestamp);
 

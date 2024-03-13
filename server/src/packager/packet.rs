@@ -71,7 +71,7 @@ impl LVErasureManager {
 
         // Every time we hit the end of the number of recovery packets, we increment the block id.
         self.current_regular_fragment_index =
-            (self.current_regular_fragment_index + 1) % EC_RATIO_RECOVERY_PACKETS;
+            (self.current_regular_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS;
 
         if self.current_regular_fragment_index == 0 {
             self.current_block_id += 1;
@@ -85,9 +85,12 @@ impl LVErasureManager {
             "should send {} bytes",
             LVErasureInformation::no_bytes() + payload.len()
         );
+
+        trace!("payload is {:?}", payload);
+
         pk.to_bytes(&mut self.pkt_data);
-        self.pkt_data[(LVErasureInformation::no_bytes() + 1)
-            ..(LVErasureInformation::no_bytes() + 1 + payload.len())]
+        self.pkt_data[(LVErasureInformation::no_bytes())
+            ..(LVErasureInformation::no_bytes() + payload.len())]
             .clone_from_slice(payload);
 
         let send_slice = &self.pkt_data[0..(LVErasureInformation::no_bytes() + payload.len())];

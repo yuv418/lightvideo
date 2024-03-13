@@ -4,6 +4,7 @@ use bytes::{buf::Writer, BufMut, Bytes, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
 use image::{ImageBuffer, Rgb};
 use log::{debug, trace};
+use net::packet::LVErasureInformation;
 use openh264::formats::{YUVBuffer, YUVSource};
 use rand::Rng;
 use rtp::{
@@ -17,6 +18,7 @@ use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
 };
+use webrtc_util::{Marshal, MarshalSize};
 
 use crate::encoder::LVEncoder;
 
@@ -40,6 +42,7 @@ pub struct LVPackager {
     packetizer: Box<dyn Packetizer>,
     erasure_manager: LVErasureManager,
     file: File,
+    rtp_pkt: BytesMut,
     fps: u32,
 }
 
@@ -60,7 +63,7 @@ impl LVPackager {
             rtp_queue: VecDeque::new(),
             yuv_buffer: YUVBuffer::new(width, height),
             packetizer: Box::new(rtp::packetizer::new_packetizer(
-                MTU_SIZE,
+                MTU_SIZE - LVErasureInformation::no_bytes(),
                 96,
                 rand.gen_range(0..u32::MAX),
                 Box::new(H264Payloader::default()),
@@ -68,6 +71,7 @@ impl LVPackager {
                 SAMPLE_RATE,
             )),
             file: File::create("cap.h264")?,
+            rtp_pkt: BytesMut::new(),
             fps,
             erasure_manager: LVErasureManager::new()?,
         })
@@ -144,9 +148,11 @@ impl LVPackager {
         target_addr: &str,
     ) -> Result<usize, Box<dyn std::error::Error>> {
         if let Some(pkt) = self.rtp_queue.pop_back() {
+            self.rtp_pkt.resize(pkt.marshal_size(), 0);
+            pkt.marshal_to(&mut self.rtp_pkt)?;
             return self
                 .erasure_manager
-                .send_lv_packet(socket, target_addr, &pkt.payload, false);
+                .send_lv_packet(socket, target_addr, &self.rtp_pkt, false);
         } else {
             Ok(0)
         }

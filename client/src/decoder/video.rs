@@ -226,6 +226,7 @@ impl LVDecoder {
         let mut rs_fragment_buffer = vec![0; SIMD_PACKET_SIZE as usize];
         let mut rs_sendq = vec![Default::default(); EC_RATIO_REGULAR_PACKETS as usize];
         let mut rs_total_packets = 0;
+        let mut rs_pkt_sizes = [0; EC_RATIO_REGULAR_PACKETS as usize];
         let mut rs_inorder_packets = 0;
         let mut rs_recovery_packets = 0;
         let mut rs_oorder_packets = 0;
@@ -270,7 +271,10 @@ impl LVDecoder {
                     for (k, mut v) in rs_decoder.decode()?.restored_original_iter() {
                         debug!("RECOVERY: recovered packet {}", k);
 
-                        rs_sendq[k] = Packet::unmarshal(&mut v)?;
+                        // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
+                        let mut slc = &v[..rs_pkt_sizes[k] as usize];
+                        debug!("slice with rtp is {:?}", slc);
+                        rs_sendq[k] = Packet::unmarshal(&mut slc)?;
                         debug!(
                             "RECOVERY: recovered packet header is {:?}",
                             rs_sendq[k].header
@@ -289,6 +293,7 @@ impl LVDecoder {
                         );
                         video_dec.depacketize_decode(pkt_inorder)?;
                     }
+                    lvheader_prev_fragment_index = 2;
                 }
 
                 rs_inorder_packets = 0;
@@ -320,6 +325,8 @@ impl LVDecoder {
                     .add_recovery_shard(lvheader.fragment_index as usize, &rs_fragment_buffer)?;
 
                 debug!("Added recovery shard to decoder, continuin");
+
+                rs_pkt_sizes = lvheader.pkt_sizes;
 
                 rs_recovery_packets += 1;
                 rs_total_packets += 1;

@@ -84,7 +84,7 @@ impl LVErasureInformation {
         Self {
             block_id: u32::from_be_bytes(buf[0..4].try_into().unwrap()),
             min_fragment_size: u32::from_be_bytes(buf[4..8].try_into().unwrap()),
-            recovery_pkt: buf[9] != 0,
+            recovery_pkt: buf[8] != 0,
             fragment_index: u32::from_be_bytes(buf[9..13].try_into().unwrap()),
             pkt_sizes,
         }

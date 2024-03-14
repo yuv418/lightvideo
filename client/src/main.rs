@@ -31,10 +31,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacketHolder>(1000);
 
             let receiver = LVNetwork::new(&addr);
-            let decoder = LVDecoder::new();
 
             receiver.run(pkt_push);
-            decoder.run(db, pkt_recv);
+            LVDecoder::run(db, pkt_recv);
 
             // Start ui
             let ui = VideoUI::new(quit_rx)?;

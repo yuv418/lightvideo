@@ -11,7 +11,7 @@ use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
 };
-use std::{sync::Arc, thread, time::Instant};
+use std::{collections::VecDeque, sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
@@ -22,15 +22,38 @@ use net::packet::{
 use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
 
-pub struct LVDecoder {}
+pub struct LVDecoder {
+    width: u32,
+    height: u32,
+    double_buffer: Arc<DoubleBuffer>,
+    buffer: Vec<u8>,
+    src_format: ImageFormat,
+    dst_format: ImageFormat,
+    decoder: Decoder,
+    pkt: H264Packet,
+}
 
 impl LVDecoder {
     // TODO Might be an Arc
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(
+        double_buffer: Arc<DoubleBuffer>,
+        src_format: ImageFormat,
+        dst_format: ImageFormat,
+        decoder: Decoder,
+    ) -> Self {
+        Self {
+            width: 0,
+            height: 0,
+            double_buffer,
+            buffer: Vec::new(),
+            src_format,
+            dst_format,
+            decoder,
+            pkt: H264Packet::default(),
+        }
     }
 
-    pub fn run(&self, double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacketHolder>) {
+    pub fn run(double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacketHolder>) {
         thread::Builder::new()
             .name("decoder_thread".to_string())
             .spawn(move || {
@@ -40,6 +63,130 @@ impl LVDecoder {
                     info!("decode receive loop exited.");
                 }
             });
+    }
+
+    pub fn depacketize_decode(
+        &mut self,
+        packet: &Packet,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let time = Instant::now();
+
+        debug!(
+            "depacketize: packet seq num is {}",
+            packet.header.sequence_number
+        );
+
+        let is_partition_head = self.pkt.is_partition_head(&packet.payload);
+        debug!("is partition head {}", is_partition_head);
+        if is_partition_head {
+            // Decode and clear buffer
+            if !self.buffer.is_empty() {
+                match self.decoder.decode(&self.buffer) {
+                    Ok(yuv) => {
+                        if let Some(ref yuv_data) = yuv {
+                            // Set up target buffer/data for calls to YUV->RGBA conversion
+                            if self.double_buffer.uninitialized() {
+                                let strides_yuv = yuv_data.strides_yuv();
+                                self.width = strides_yuv.0 as u32;
+                                self.height = yuv_data.height() as u32;
+                                self.double_buffer.initialize(
+                                    (4 * self.width * self.height) as usize,
+                                    self.width as usize,
+                                    self.height as usize,
+                                );
+                            }
+                            debug!("data width: {}, height: {}", self.width, self.height);
+
+                            // New scope so rgba_buffer is dropped before swap
+                            {
+                                let mut rgba_buffer = self.double_buffer.back().unwrap();
+
+                                let mut src_sizes = [0usize; 3];
+                                get_buffers_size(
+                                    self.width,
+                                    self.height,
+                                    &self.src_format,
+                                    None,
+                                    &mut src_sizes,
+                                )?;
+
+                                let y = &yuv_data.y()[0..]; //src_sizes[0] + 1];
+                                let u = &yuv_data.u()[0..]; //src_sizes[1] + 1];
+                                let v = &yuv_data.v()[0..]; //src_sizes[2] + 1];
+
+                                debug!(
+                                        "converting image... dest buf size is {}, src_sizes is {:#?}, ysize usize vsize: [{}, {}, {}], strides from class are {:?}",
+                                        rgba_buffer.as_mut().unwrap().buffer.len(),
+                                        src_sizes, y.len(), u.len(), v.len(),
+                                        yuv_data.strides_yuv()
+                                    );
+
+                                // Convert YUV to Rgba8Uint so it can be copied to wgpu buffer.
+                                match convert_image(
+                                    self.width,
+                                    self.height,
+                                    &self.src_format,
+                                    None,
+                                    &[y, u, v],
+                                    &self.dst_format,
+                                    None,
+                                    &mut [&mut *rgba_buffer.as_mut().unwrap().buffer],
+                                ) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        warn!("converting image failed with {:?}, continuing", e)
+                                    }
+                                }
+                            }
+
+                            // swap doublebuffer
+                            self.double_buffer.swap();
+                        }
+                        // debug!("h264_data {:?}", h264_data);
+                    }
+                    Err(e) => {
+                        error!("Failed to decode pkt {}", e);
+                        if let Some(bt) = e.backtrace() {
+                            error!("backtrace: {}", bt);
+                        }
+
+                        LVStatisticsCollector::update_data(
+                            "client_failed_decode_packets",
+                            LVDataPoint::Increment,
+                        );
+                    }
+                }
+            } else {
+                warn!("skipping decode empty packet");
+            }
+            // if there's an empty packet and a boundary we need to clear the buffer. In both cases the buffer must be cleared.
+            self.buffer.clear();
+        }
+        let depacketized_payload = self.pkt.depacketize(&packet.payload)?;
+        if depacketized_payload.is_empty() {
+            trace!(
+                "depacketized payload is empty! payload is {:?}",
+                &packet.payload[..]
+            );
+        } else {
+            trace!(
+                "depacketized payload is NOT empty {:?}",
+                &depacketized_payload[..]
+            );
+
+            trace!(
+                "payload for NONEMPTY depacketized is {:?}",
+                &packet.payload[..]
+            );
+        }
+        self.buffer.extend_from_slice(&depacketized_payload);
+
+        LVStatisticsCollector::update_data(
+            "client_decode_packet",
+            LVDataPoint::TimeElapsed(time.elapsed()),
+        );
+
+        Ok(())
     }
 
     pub fn decode_loop(
@@ -52,15 +199,6 @@ impl LVDecoder {
         LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("client_failed_decode_packets", LVDataType::Aggregate);
 
-        let mut pkt = H264Packet::default();
-        let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut buffer = Vec::new();
-
-        let mut width: u32 = 0;
-        let mut height: u32 = 0;
-
-        let mut rtp_prev_seqnum: u32 = 0;
-
         let src_format = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::I420,
             color_space: ColorSpace::Bt601FR,
@@ -71,6 +209,13 @@ impl LVDecoder {
             color_space: ColorSpace::Rgb,
             num_planes: 1,
         };
+        let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
+        let mut video_dec = Self::new(double_buffer, src_format, dst_format, decoder);
+
+        let mut width: u32 = 0;
+        let mut height: u32 = 0;
+
+        let mut lvheader_prev_fragment_index: u32 = 2;
 
         let mut rs_decoder = ReedSolomonDecoder::new(
             EC_RATIO_REGULAR_PACKETS as usize,
@@ -79,11 +224,16 @@ impl LVDecoder {
         )?;
 
         let mut rs_fragment_buffer = vec![0; SIMD_PACKET_SIZE as usize];
+        let mut rs_sendq = vec![Default::default(); EC_RATIO_REGULAR_PACKETS as usize];
+        let mut rs_total_packets = 0;
+        let mut rs_inorder_packets = 0;
+        let mut rs_recovery_packets = 0;
+        let mut rs_oorder_packets = 0;
+        let mut block_id = 0;
 
         // TODO what happened to re-ordering RTP packets?
         loop {
             // TODO don't copy. We slice the buffer so it only uses the part of the buffer that was written to by the socket receive.
-            let time = Instant::now();
             let data = packet_recv.recv_ref();
 
             if let None = data {
@@ -106,155 +256,120 @@ impl LVDecoder {
             let lvheader = LVErasureInformation::from_bytes(&data_ext.payload[0..data_ext.amt]);
             let mut rtp_data = &data_ext.payload[LVErasureInformation::no_bytes()..data_ext.amt];
 
+            // new block
+            if lvheader.block_id != block_id {
+                // recovery
+                if rs_total_packets < EC_RATIO_RECOVERY_PACKETS + EC_RATIO_REGULAR_PACKETS
+                    && rs_total_packets - rs_recovery_packets != EC_RATIO_REGULAR_PACKETS
+                {
+                    debug!(
+                        "RECOVERY: decoded {} packets in order, {} total packets in block {}, beginning error recovery",
+                        rs_inorder_packets, rs_total_packets, block_id
+                    );
+
+                    for (k, mut v) in rs_decoder.decode()?.restored_original_iter() {
+                        debug!("RECOVERY: recovered packet {}", k);
+
+                        rs_sendq[k] = Packet::unmarshal(&mut v)?;
+                        debug!(
+                            "RECOVERY: recovered packet header is {:?}",
+                            rs_sendq[k].header
+                        );
+                    }
+
+                    // send all packets in rs_sendq[rs_inorder_packets..] to depacketizer
+                    debug!(
+                        "length of sendq sliced for inorder packets is {}",
+                        rs_sendq[rs_inorder_packets..].len()
+                    );
+                    for (i, pkt_inorder) in rs_sendq[rs_inorder_packets..].iter().enumerate() {
+                        debug!(
+                            "RECOVERY: sending packet {} to decoder",
+                            rs_inorder_packets + i
+                        );
+                        video_dec.depacketize_decode(pkt_inorder)?;
+                    }
+                }
+
+                rs_inorder_packets = 0;
+                rs_recovery_packets = 0;
+                rs_oorder_packets = 0;
+                rs_total_packets = 0;
+
+                rs_decoder.reset(
+                    EC_RATIO_REGULAR_PACKETS as usize,
+                    EC_RATIO_RECOVERY_PACKETS as usize,
+                    SIMD_PACKET_SIZE as usize,
+                )?;
+
+                block_id = lvheader.block_id;
+            }
+
             // prepare for missing packets by putting every received packet into the decoder.
 
             rs_fragment_buffer[0..rtp_data.len()].clone_from_slice(rtp_data);
             rs_fragment_buffer[rtp_data.len()..].fill(0);
 
-            if lvheader.recovery_pkt {
-                rs_decoder
-                    .add_recovery_shard(lvheader.fragment_index as usize, &rs_fragment_buffer);
-                continue;
-            }
-
-            rs_decoder.add_original_shard(lvheader.fragment_index as usize, &rs_fragment_buffer);
-
             debug!("Received lvheader {:?}", lvheader);
             debug!("Received lvdata {:?}", rtp_data);
             debug!("lvdata remaining {}", rtp_data.remaining());
             debug!("recved data from socket thread");
+
+            if lvheader.recovery_pkt {
+                rs_decoder
+                    .add_recovery_shard(lvheader.fragment_index as usize, &rs_fragment_buffer)?;
+
+                debug!("Added recovery shard to decoder, continuin");
+
+                rs_recovery_packets += 1;
+                rs_total_packets += 1;
+
+                continue;
+            }
+
+            rs_decoder.add_original_shard(lvheader.fragment_index as usize, &rs_fragment_buffer)?;
+            rs_total_packets += 1;
             // turn into packet
             let packet = Packet::unmarshal(&mut rtp_data)?;
 
             debug!("packet timestamp {}", packet.header.timestamp);
             debug!("packet seqnum {}", packet.header.sequence_number);
 
-            if rtp_prev_seqnum + 1 != packet.header.sequence_number as u32 {
+            if rs_oorder_packets > 0 {
+                warn!("adding packet to oorder packets");
+                lvheader_prev_fragment_index = lvheader.fragment_index as u32;
+                rs_sendq[lvheader.fragment_index as usize] = packet;
+                rs_oorder_packets += 1;
+                continue;
+            }
+
+            if (lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS
+                != lvheader.fragment_index
+            {
                 warn!(
                     "packet out of order: current {} prev {}",
-                    packet.header.sequence_number, rtp_prev_seqnum
+                    lvheader.fragment_index, lvheader_prev_fragment_index
                 );
 
                 LVStatisticsCollector::update_data(
                     "client_packets_out_of_order",
                     LVDataPoint::Increment,
                 );
+
+                // add to "queue"
+                lvheader_prev_fragment_index = lvheader.fragment_index as u32;
+                rs_oorder_packets += 1;
+                rs_sendq[lvheader.fragment_index as usize] = packet;
+
+                continue;
             }
 
-            rtp_prev_seqnum = packet.header.sequence_number as u32;
-
-            let is_partition_head = pkt.is_partition_head(&packet.payload);
-            debug!("is partition head {}", is_partition_head);
-            if is_partition_head {
-                // Decode and clear buffer
-                if !buffer.is_empty() {
-                    match decoder.decode(&buffer) {
-                        Ok(yuv) => {
-                            if let Some(ref yuv_data) = yuv {
-                                // Set up target buffer/data for calls to YUV->RGBA conversion
-                                if double_buffer.uninitialized() {
-                                    let strides_yuv = yuv_data.strides_yuv();
-                                    width = strides_yuv.0 as u32;
-                                    height = yuv_data.height() as u32;
-                                    double_buffer.initialize(
-                                        (4 * width * height) as usize,
-                                        width as usize,
-                                        height as usize,
-                                    );
-                                }
-                                debug!("data width: {}, height: {}", width, height);
-
-                                // New scope so rgba_buffer is dropped before swap
-                                {
-                                    let mut rgba_buffer = double_buffer.back().unwrap();
-
-                                    let mut src_sizes = [0usize; 3];
-                                    get_buffers_size(
-                                        width,
-                                        height,
-                                        &src_format,
-                                        None,
-                                        &mut src_sizes,
-                                    )?;
-
-                                    let y = &yuv_data.y()[0..]; //src_sizes[0] + 1];
-                                    let u = &yuv_data.u()[0..]; //src_sizes[1] + 1];
-                                    let v = &yuv_data.v()[0..]; //src_sizes[2] + 1];
-
-                                    debug!(
-                                        "converting image... dest buf size is {}, src_sizes is {:#?}, ysize usize vsize: [{}, {}, {}], strides from class are {:?}",
-                                        rgba_buffer.as_mut().unwrap().buffer.len(),
-                                        src_sizes, y.len(), u.len(), v.len(),
-                                        yuv_data.strides_yuv()
-                                    );
-
-                                    // Convert YUV to Rgba8Uint so it can be copied to wgpu buffer.
-                                    match convert_image(
-                                        width,
-                                        height,
-                                        &src_format,
-                                        None,
-                                        &[y, u, v],
-                                        &dst_format,
-                                        None,
-                                        &mut [&mut *rgba_buffer.as_mut().unwrap().buffer],
-                                    ) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            warn!(
-                                                "converting image failed with {:?}, continuing",
-                                                e
-                                            )
-                                        }
-                                    }
-                                }
-
-                                // swap doublebuffer
-                                double_buffer.swap();
-                            }
-                            // debug!("h264_data {:?}", h264_data);
-                        }
-                        Err(e) => {
-                            error!("Failed to decode pkt {}", e);
-                            if let Some(bt) = e.backtrace() {
-                                error!("backtrace: {}", bt);
-                            }
-
-                            LVStatisticsCollector::update_data(
-                                "client_failed_decode_packets",
-                                LVDataPoint::Increment,
-                            );
-                        }
-                    }
-                } else {
-                    warn!("skipping decode empty packet");
-                }
-                // if there's an empty packet and a boundary we need to clear the buffer. In both cases the buffer must be cleared.
-                buffer.clear();
+            if rs_oorder_packets == 0 {
+                rs_inorder_packets += 1;
             }
-            let depacketized_payload = pkt.depacketize(&packet.payload)?;
-            if depacketized_payload.is_empty() {
-                trace!(
-                    "depacketized payload is empty! payload is {:?}",
-                    &packet.payload[..]
-                );
-            } else {
-                trace!(
-                    "depacketized payload is NOT empty {:?}",
-                    &depacketized_payload[..]
-                );
 
-                trace!(
-                    "payload for NONEMPTY depacketized is {:?}",
-                    &packet.payload[..]
-                );
-            }
-            buffer.extend_from_slice(&depacketized_payload);
-
-            LVStatisticsCollector::update_data(
-                "client_decode_packet",
-                LVDataPoint::TimeElapsed(time.elapsed()),
-            );
+            lvheader_prev_fragment_index = lvheader.fragment_index as u32;
+            video_dec.depacketize_decode(&packet)?;
         }
     }
 }

@@ -26,6 +26,7 @@ pub struct LVErasureManager {
     current_recovery_fragment_index: u32,
     largest_sized_payload: usize,
     pkt_data: BytesMut,
+    pkt_sizes: [u16; EC_RATIO_REGULAR_PACKETS as usize],
 }
 
 impl LVErasureManager {
@@ -40,6 +41,7 @@ impl LVErasureManager {
             current_regular_fragment_index: 0,
             current_recovery_fragment_index: 0,
             largest_sized_payload: 0,
+            pkt_sizes: [0; EC_RATIO_REGULAR_PACKETS as usize],
             pkt_data: BytesMut::zeroed(
                 SIMD_PACKET_SIZE as usize + LVErasureInformation::no_bytes(),
             ),
@@ -61,19 +63,13 @@ impl LVErasureManager {
             fragment_index: self.current_regular_fragment_index,
             min_fragment_size: EC_RATIO_REGULAR_PACKETS,
             recovery_pkt: false,
+            pkt_sizes: [0; EC_RATIO_REGULAR_PACKETS as usize],
         };
 
         trace!("lv erasure information {:?}", pk);
 
         // Every time we hit the end of the number of recovery packets, we increment the block id.
-        self.current_regular_fragment_index =
-            (self.current_regular_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS;
-
-        if self.current_regular_fragment_index == 0 {
-            self.current_block_id += 1;
-        }
-
-        if self.current_regular_fragment_index == 1 {
+        if self.current_regular_fragment_index == 0 && self.current_block_id != 0 {
             debug!("obtaining recovery data from reed solomon code");
 
             self.current_recovery_fragment_index =
@@ -81,10 +77,11 @@ impl LVErasureManager {
 
             let recovery_payload = self.enc.encode()?;
             let recovery_header = LVErasureInformation {
-                block_id: self.current_block_id,
+                block_id: self.current_block_id - 1,
                 fragment_index: self.current_recovery_fragment_index,
                 min_fragment_size: EC_RATIO_REGULAR_PACKETS,
                 recovery_pkt: true,
+                pkt_sizes: self.pkt_sizes,
             };
 
             debug!("recovery header is {:?}", recovery_header);
@@ -116,6 +113,13 @@ impl LVErasureManager {
             self.largest_sized_payload = 0;
         }
 
+        self.current_regular_fragment_index =
+            (self.current_regular_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS;
+
+        if self.current_regular_fragment_index == 0 {
+            self.current_block_id += 1;
+        }
+
         let marshal_size = rtp.marshal_size();
         if marshal_size > self.largest_sized_payload {
             self.largest_sized_payload = marshal_size;
@@ -133,6 +137,7 @@ impl LVErasureManager {
         // trace!("payload is {:?}", payload);
 
         pk.to_bytes(&mut self.pkt_data);
+        self.pkt_sizes[pk.fragment_index as usize] = marshal_size as u16;
 
         {
             let mut rtp_slice = &mut self.pkt_data[(LVErasureInformation::no_bytes())

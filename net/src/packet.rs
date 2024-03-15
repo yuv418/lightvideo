@@ -4,8 +4,8 @@ use bytes::BufMut;
 use log::trace;
 
 pub const MTU_SIZE: usize = 1200;
-pub const EC_RATIO_RECOVERY_PACKETS: u32 = 1;
-pub const EC_RATIO_REGULAR_PACKETS: u32 = 3;
+pub const EC_RATIO_RECOVERY_PACKETS: u32 = 2;
+pub const EC_RATIO_REGULAR_PACKETS: u32 = 4;
 
 pub const SIMD_PACKET_SIZE: u32 =
     ((MTU_SIZE as u32 - LVErasureInformation::no_bytes() as u32 + 63) / 64) * 64;

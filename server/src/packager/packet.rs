@@ -39,7 +39,7 @@ impl LVErasureManager {
             )?,
             current_block_id: 0,
             current_regular_fragment_index: 0,
-            current_recovery_fragment_index: 0,
+            current_recovery_fragment_index: EC_RATIO_RECOVERY_PACKETS - 1,
             largest_sized_payload: 0,
             pkt_sizes: [0; EC_RATIO_REGULAR_PACKETS as usize],
             pkt_data: BytesMut::zeroed(
@@ -72,23 +72,24 @@ impl LVErasureManager {
         if self.current_regular_fragment_index == 0 && self.current_block_id != 0 {
             debug!("obtaining recovery data from reed solomon code");
 
-            self.current_recovery_fragment_index =
-                (self.current_recovery_fragment_index + 1) % EC_RATIO_RECOVERY_PACKETS;
-
             let recovery_payload = self.enc.encode()?;
-            let recovery_header = LVErasureInformation {
-                block_id: self.current_block_id - 1,
-                fragment_index: self.current_recovery_fragment_index,
-                min_fragment_size: EC_RATIO_REGULAR_PACKETS,
-                recovery_pkt: true,
-                pkt_sizes: self.pkt_sizes,
-            };
-
-            debug!("recovery header is {:?}", recovery_header);
-
-            recovery_header.to_bytes(&mut self.pkt_data);
-
             for recovery_pkt in recovery_payload.recovery_iter() {
+                // set up header for multiple recovery slices
+                self.current_recovery_fragment_index =
+                    (self.current_recovery_fragment_index + 1) % EC_RATIO_RECOVERY_PACKETS;
+
+                let recovery_header = LVErasureInformation {
+                    block_id: self.current_block_id - 1,
+                    fragment_index: self.current_recovery_fragment_index,
+                    min_fragment_size: EC_RATIO_REGULAR_PACKETS,
+                    recovery_pkt: true,
+                    pkt_sizes: self.pkt_sizes,
+                };
+
+                debug!("recovery header is {:?}", recovery_header);
+
+                recovery_header.to_bytes(&mut self.pkt_data);
+
                 let pkt_slice = &mut self.pkt_data[(LVErasureInformation::no_bytes())
                     ..(LVErasureInformation::no_bytes() + self.largest_sized_payload)];
 
@@ -99,16 +100,15 @@ impl LVErasureManager {
                 // so we can just slice the array as 0..self.largest_sized_payload
 
                 pkt_slice.copy_from_slice(&recovery_pkt[0..self.largest_sized_payload]);
+
+                // send recovery packet over network
+                let send_slice = &self.pkt_data
+                    [..(self.largest_sized_payload + LVErasureInformation::no_bytes())];
+
+                debug!("send slice is {:?}", send_slice);
+                let bytes = socket.send_to(send_slice, target_addr)?;
+                debug!("send {} RECOVERY bytes to {}", bytes, target_addr);
             }
-
-            // send recovery packet over network
-
-            let send_slice =
-                &self.pkt_data[..(self.largest_sized_payload + LVErasureInformation::no_bytes())];
-
-            debug!("send slice is {:?}", send_slice);
-            let bytes = socket.send_to(send_slice, target_addr)?;
-            debug!("send {} RECOVERY bytes to {}", bytes, target_addr);
 
             self.largest_sized_payload = 0;
         }

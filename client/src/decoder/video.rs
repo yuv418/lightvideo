@@ -157,7 +157,7 @@ impl LVDecoder {
                     }
                 }
             } else {
-                warn!("skipping decode empty packet");
+                debug!("skipping decode empty packet");
             }
             // if there's an empty packet and a boundary we need to clear the buffer. In both cases the buffer must be cleared.
             self.buffer.clear();
@@ -268,31 +268,42 @@ impl LVDecoder {
                         rs_inorder_packets, rs_total_packets, block_id
                     );
 
-                    for (k, mut v) in rs_decoder.decode()?.restored_original_iter() {
-                        debug!("RECOVERY: recovered packet {}", k);
+                    match rs_decoder.decode() {
+                        Ok(data) => {
+                            for (k, mut v) in data.restored_original_iter() {
+                                debug!("RECOVERY: recovered packet {}", k);
 
-                        // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
-                        let mut slc = &v[..rs_pkt_sizes[k] as usize];
-                        debug!("slice with rtp is {:?}", slc);
-                        rs_sendq[k] = Packet::unmarshal(&mut slc)?;
-                        debug!(
-                            "RECOVERY: recovered packet header is {:?}",
-                            rs_sendq[k].header
-                        );
+                                // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
+                                let mut slc = &v[..rs_pkt_sizes[k] as usize];
+                                debug!("slice with rtp is {:?}", slc);
+                                debug!("full slice is {:?}", v);
+                                rs_sendq[k] = Packet::unmarshal(&mut slc)?;
+                                debug!(
+                                    "RECOVERY: recovered packet header is {:?}",
+                                    rs_sendq[k].header
+                                );
+                            }
+
+                            // send all packets in rs_sendq[rs_inorder_packets..] to depacketizer
+                            debug!(
+                                "length of sendq sliced for inorder packets is {}",
+                                rs_sendq[rs_inorder_packets..].len()
+                            );
+                            for (i, pkt_inorder) in
+                                rs_sendq[rs_inorder_packets..].iter().enumerate()
+                            {
+                                debug!(
+                                    "RECOVERY: sending packet {} to decoder",
+                                    rs_inorder_packets + i
+                                );
+                                video_dec.depacketize_decode(pkt_inorder)?;
+                            }
+                        }
+                        Err(e) => {
+                            warn!("recovery failed with {:?}", e);
+                        }
                     }
 
-                    // send all packets in rs_sendq[rs_inorder_packets..] to depacketizer
-                    debug!(
-                        "length of sendq sliced for inorder packets is {}",
-                        rs_sendq[rs_inorder_packets..].len()
-                    );
-                    for (i, pkt_inorder) in rs_sendq[rs_inorder_packets..].iter().enumerate() {
-                        debug!(
-                            "RECOVERY: sending packet {} to decoder",
-                            rs_inorder_packets + i
-                        );
-                        video_dec.depacketize_decode(pkt_inorder)?;
-                    }
                     lvheader_prev_fragment_index = 2;
                 }
 
@@ -343,7 +354,7 @@ impl LVDecoder {
             debug!("packet seqnum {}", packet.header.sequence_number);
 
             if rs_oorder_packets > 0 {
-                warn!("adding packet to oorder packets");
+                debug!("adding packet to oorder packets");
                 lvheader_prev_fragment_index = lvheader.fragment_index as u32;
                 rs_sendq[lvheader.fragment_index as usize] = packet;
                 rs_oorder_packets += 1;
@@ -353,7 +364,7 @@ impl LVDecoder {
             if (lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS
                 != lvheader.fragment_index
             {
-                warn!(
+                debug!(
                     "packet out of order: current {} prev {}",
                     lvheader.fragment_index, lvheader_prev_fragment_index
                 );

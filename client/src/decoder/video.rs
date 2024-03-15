@@ -215,7 +215,7 @@ impl LVDecoder {
         let mut width: u32 = 0;
         let mut height: u32 = 0;
 
-        let mut lvheader_prev_fragment_index: u32 = 2;
+        let mut lvheader_prev_fragment_index: u32 = EC_RATIO_REGULAR_PACKETS - 1;
 
         let mut rs_decoder = ReedSolomonDecoder::new(
             EC_RATIO_REGULAR_PACKETS as usize,
@@ -304,8 +304,10 @@ impl LVDecoder {
                         }
                     }
 
-                    lvheader_prev_fragment_index = 2;
+                    lvheader_prev_fragment_index = EC_RATIO_REGULAR_PACKETS - 1;
                 }
+
+                debug!("new block, resetting decoder and total packets");
 
                 rs_inorder_packets = 0;
                 rs_recovery_packets = 0;

@@ -5,6 +5,7 @@ exclude = ["openh264-rs"]
 members = [
     "server",
     "client",
+    "net",
     "statistics"
 ]
 

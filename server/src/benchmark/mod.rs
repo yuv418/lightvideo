@@ -52,8 +52,6 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
     let mut process_avg: u128 = 0;
     let mut send_avg: u128 = 0;
 
-    let mut rtp_pkt = vec![];
-
     for i in 0..ITERATIONS {
         let before = Instant::now();
         info!("starting capture -> package -> send benchmark");
@@ -74,11 +72,9 @@ pub fn bench() -> Result<(), Box<dyn std::error::Error>> {
 
             // Send frame over network
             let before = Instant::now();
-            while let Some(data) = packager.pop_rtp() {
+            while packager.has_rtp() {
                 // Don't always heap allocate
-                rtp_pkt.resize(data.marshal_size(), 0);
-                data.marshal_to(&mut rtp_pkt)?;
-                let bytes = socket.send_to(&rtp_pkt, "127.0.0.1:22879")?;
+                let bytes = packager.send_next_pkt(&socket, "127.0.0.1:22879")?;
                 debug!("sent {} bytes to addr", bytes);
             }
             let elapsed = before.elapsed();

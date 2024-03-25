@@ -348,11 +348,13 @@ dependencies = [
  "flexi_logger",
  "flume",
  "log",
+ "net",
  "openh264",
  "openh264-sys2",
  "parking_lot 0.12.1",
  "pollster",
  "reed-solomon-novelpoly",
+ "reed-solomon-simd",
  "rtp",
  "socket2",
  "statistics",
@@ -680,6 +682,12 @@ checksum = "d329bdeac514ee06249dabc27877490f17f5d371ec693360768b838e19f3ae10"
 dependencies = [
  "simd-adler32",
 ]
+
+[[package]]
+name = "fixedbitset"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce7134b9999ecaf8bcd65542e436736ef32ddca1b3e06094cb6ec5755203b80"
 
 [[package]]
 name = "flate2"
@@ -1419,6 +1427,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "net"
+version = "0.1.0"
+dependencies = [
+ "byteorder",
+ "bytes",
+ "log",
+ "rtp",
+]
+
+[[package]]
 name = "nix"
 version = "0.26.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1894,6 +1912,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "readme-rustdocifier"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "08ad765b21a08b1a8e5cdce052719188a23772bcbefb3c439f0baaf62c56ceac"
+
+[[package]]
 name = "redox_syscall"
 version = "0.2.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1931,6 +1955,18 @@ dependencies = [
  "itertools",
  "static_init",
  "thiserror",
+]
+
+[[package]]
+name = "reed-solomon-simd"
+version = "2.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "40cb67f1b04dc9e370f3c6653fd4cd152c65afb8ebf52074934369e05ccec20e"
+dependencies = [
+ "bytemuck",
+ "fixedbitset",
+ "once_cell",
+ "readme-rustdocifier",
 ]
 
 [[package]]
@@ -2115,19 +2151,22 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "bytes",
  "cudarc",
  "dcv-color-primitives",
  "flexi_logger",
  "flume",
  "image",
+ "lazy_static",
  "libc",
  "log",
+ "net",
  "nvidia-video-codec-sdk",
  "openh264",
  "openh264-sys2",
  "rand",
- "reed-solomon-novelpoly",
+ "reed-solomon-simd",
  "ring",
  "rtp",
  "screenshots",

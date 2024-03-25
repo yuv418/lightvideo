@@ -1,4 +1,8 @@
-use std::{io::ErrorKind, os::raw::c_int, time::Instant};
+use std::{
+    io::ErrorKind,
+    os::raw::{c_int, c_void},
+    time::Instant,
+};
 
 use bytes::{buf::Writer, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
@@ -10,7 +14,7 @@ use openh264::{
     Error as OpenH264Error, Timestamp,
 };
 
-use openh264_sys2::{SEncParamExt, LOW_COMPLEXITY, RC_BITRATE_MODE};
+use openh264_sys2::{SEncParamExt, ENCODER_OPTION_BITRATE, LOW_COMPLEXITY, RC_BITRATE_MODE};
 use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
@@ -22,6 +26,9 @@ pub struct LVOpenH264Encoder {
     encoder: Encoder,
     width: u32,
     height: u32,
+
+    // Params
+    params: SEncParamExt,
 
     // Image conversion stuff
     src_fmt: ImageFormat,
@@ -82,7 +89,7 @@ impl LVEncoder for LVOpenH264Encoder {
         );
 
         unsafe {
-            let mut encoder = Encoder::with_raw_config(params)?;
+            let mut encoder = Encoder::with_raw_config(params.clone())?;
             let _raw_api = encoder.raw_api();
             // raw_api.set_option(ENCODER_OPTION_TRACE_LEVEL, addr_of_mut!(false_val).cast());
             // raw_api.set_option(ENCODER_OPTION_DATAFORMAT, addr_of_mut!(true_val).cast());
@@ -90,6 +97,7 @@ impl LVEncoder for LVOpenH264Encoder {
                 encoder,
                 width,
                 height,
+                params,
 
                 dst_fmt,
                 src_fmt,
@@ -154,6 +162,19 @@ impl LVEncoder for LVOpenH264Encoder {
             &mut [&mut y_slice, &mut u_slice, &mut v_slice],
         )?;
 
+        Ok(())
+    }
+    fn bitrate(&self) -> u32 {
+        self.params.iTargetBitrate as u32
+    }
+    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        self.params.iTargetBitrate = new_bitrate as c_int;
+        unsafe {
+            self.encoder.raw_api().set_option(
+                ENCODER_OPTION_BITRATE,
+                (&mut self.params.iTargetBitrate) as *mut i32 as *mut c_void,
+            );
+        }
         Ok(())
     }
 }

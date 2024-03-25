@@ -13,7 +13,7 @@ use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
+    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -32,6 +32,9 @@ pub struct LVNvidiaEncoder {
     width: u32,
     height: u32,
     frame_no: u64,
+
+    // parameters
+    enc_params: NV_ENC_INITIALIZE_PARAMS,
 
     // image conversion stuff
     src_fmt: ImageFormat,
@@ -144,7 +147,7 @@ impl LVEncoder for LVNvidiaEncoder {
         enc_params.encode_config(&mut preset_cfg.presetCfg);
 
         //
-        let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, enc_params)?;
+        let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, &mut enc_params)?;
         info!("NVIDIA encoder has been initialized");
 
         let pre_enc = Instant::now();
@@ -159,6 +162,7 @@ impl LVEncoder for LVNvidiaEncoder {
             width,
             height,
             enc_session,
+            enc_params,
             frame_no: 0,
             src_fmt,
             dst_fmt,
@@ -269,7 +273,24 @@ impl LVEncoder for LVNvidiaEncoder {
         Ok(())
     }
     fn bitrate(&self) -> u32 {
-        self.enc_session
+        unsafe { *self.enc_params.encodeConfig }
+            .rcParams
+            .averageBitRate
     }
-    fn set_bitrate(&self) -> Result<(), Box<dyn std::error::Error>> {}
+    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        unsafe { *self.enc_params.encodeConfig }
+            .rcParams
+            .averageBitRate = new_bitrate;
+
+        let reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
+            reInitEncodeParams: self.enc_params,
+            ..Default::default()
+        };
+
+        self.enc_session
+            .get_encoder()
+            .reconfigure_encoder(reconfigure_params);
+
+        Ok(())
+    }
 }

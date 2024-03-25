@@ -1,6 +1,5 @@
 use std::mem::size_of;
 
-use bytes::BufMut;
 use log::trace;
 
 pub const MTU_SIZE: usize = 1200;

@@ -20,6 +20,8 @@ use crate::{
     packager::LVPackager,
 };
 
+mod feedback_server;
+
 pub struct Server {
     bind_addr: String,
     target_addr: String,

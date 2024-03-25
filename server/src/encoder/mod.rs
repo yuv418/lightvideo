@@ -53,4 +53,7 @@ pub trait LVEncoder {
         timestamp: u64,
         h264_buffer: &mut Writer<BytesMut>,
     ) -> Result<(), Box<dyn std::error::Error>>;
+
+    fn bitrate(&self) -> u32;
+    fn set_bitrate(&self) -> Result<(), Box<dyn std::error::Error>>;
 }

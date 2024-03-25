@@ -268,4 +268,8 @@ impl LVEncoder for LVNvidiaEncoder {
 
         Ok(())
     }
+    fn bitrate(&self) -> u32 {
+        self.enc_session
+    }
+    fn set_bitrate(&self) -> Result<(), Box<dyn std::error::Error>> {}
 }

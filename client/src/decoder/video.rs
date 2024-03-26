@@ -5,6 +5,7 @@ use openh264::{
     decoder::{Decoder, DecoderConfig},
     formats::YUVSource,
 };
+use parking_lot::Mutex;
 use reed_solomon_simd::ReedSolomonDecoder;
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
 use statistics::{
@@ -15,8 +16,11 @@ use std::{collections::VecDeque, sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
-use net::packet::{
-    LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+use net::{
+    feedback_packet::{self, LVFeedbackPacket},
+    packet::{
+        LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+    },
 };
 
 use crate::decoder::network::LVPacketHolder;
@@ -53,11 +57,15 @@ impl LVDecoder {
         }
     }
 
-    pub fn run(double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacketHolder>) {
+    pub fn run(
+        double_buffer: Arc<DoubleBuffer>,
+        packet_recv: Receiver<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+    ) {
         thread::Builder::new()
             .name("decoder_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::decode_loop(double_buffer, packet_recv) {
+                if let Err(e) = Self::decode_loop(double_buffer, packet_recv, feedback_pkt) {
                     error!("decode loop failed with error {:?}", e);
                 } else {
                     info!("decode receive loop exited.");
@@ -192,6 +200,7 @@ impl LVDecoder {
     pub fn decode_loop(
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
 

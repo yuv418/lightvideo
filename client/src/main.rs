@@ -1,6 +1,7 @@
-use std::sync::Arc;
+use std::{net::SocketAddrV4, sync::Arc};
 
 use decoder::{
+    feedback,
     network::{LVNetwork, LVPacketHolder},
     video::LVDecoder,
 };
@@ -30,10 +31,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Set up mpsc
             let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacketHolder>(1000);
 
-            let receiver = LVNetwork::new(&addr);
+            let mut feedback_addr: SocketAddrV4 = addr.parse()?;
+            feedback_addr.set_port(feedback_addr.port() + 2);
+
+            let feedback_pkt = feedback::start(&feedback_addr.to_string())?;
+
+            let receiver = LVNetwork::new(&addr)?;
 
             receiver.run(pkt_push);
-            LVDecoder::run(db, pkt_recv);
+            LVDecoder::run(db, pkt_recv, feedback_pkt);
 
             // Start ui
             let ui = VideoUI::new(quit_rx)?;

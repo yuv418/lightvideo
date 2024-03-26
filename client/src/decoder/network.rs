@@ -1,9 +1,17 @@
-use std::{net::UdpSocket, thread, time::Instant};
+use std::{
+    io::Write,
+    net::{SocketAddrV4, TcpStream, UdpSocket},
+    thread,
+    time::Instant,
+};
 
 use bytes::BytesMut;
 use log::{debug, error, info};
+use net::feedback_packet::LVFeedbackPacket;
 use socket2::Socket;
 use thingbuf::mpsc::{blocking::Sender, errors::Closed};
+
+use super::feedback;
 
 const MTU_SIZE: usize = 1200;
 
@@ -31,14 +39,19 @@ impl Default for LVPacketHolder {
 }
 
 impl LVNetwork {
-    pub fn new(addr: &str) -> Self {
-        Self {
+    pub fn new(addr: &str) -> Result<Self, Box<dyn std::error::Error>> {
+        // Feedback address is addr + 2
+        Ok(Self {
             addr: addr.to_owned(),
-        }
+        })
     }
 
-    pub fn run(&self, packet_push: Sender<LVPacketHolder>) {
+    pub fn run(
+        &self,
+        packet_push: Sender<LVPacketHolder>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let addr = self.addr.clone();
+
         thread::Builder::new()
             .name("network_thread".to_string())
             .spawn(move || {
@@ -48,6 +61,8 @@ impl LVNetwork {
                     info!("socket receive loop exited.");
                 }
             });
+
+        Ok(())
     }
 
     fn socket_loop(

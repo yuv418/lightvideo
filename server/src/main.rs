@@ -1,6 +1,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 
 use flexi_logger::Logger;
+use log::debug;
 use server::{feedback_server::LVFeedbackServer, streaming_server::LVStreamingServer};
 use statistics::collector::LVStatisticsCollector;
 
@@ -11,7 +12,10 @@ mod packager;
 mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("trace,statistics=debug")?.start()?;
+    Logger::try_with_str(
+        "trace,statistics=info,server::server::streaming_server=info, server::packager=info, server::capture=info, server::encoder=info, net=info",
+    )?
+    .start()?;
     let quit_rx = LVStatisticsCollector::start();
 
     match std::env::args().nth(1).as_deref() {
@@ -19,9 +23,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("server") => match std::env::args().nth(2) {
             Some(addr) => {
                 let target_addr = std::env::args().nth(3).unwrap();
-                let mut feedback_addr: SocketAddr = target_addr.parse()?;
+                let mut feedback_addr: SocketAddr = addr.parse()?;
 
-                feedback_addr.set_port(feedback_addr.port() + 1);
+                feedback_addr.set_port(feedback_addr.port() + 2);
 
                 let feedback_server = LVFeedbackServer::new(&feedback_addr.to_string());
                 let bitrate_mtx = feedback_server.begin();

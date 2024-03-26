@@ -237,10 +237,10 @@ impl LVEncoder for LVNvidiaEncoder {
                     "server_bitstream_buffer_write",
                     LVDataPoint::TimeElapsed(pre_enc.elapsed()),
                 );
-                dbg!(bs_lock.duration());
-                dbg!(bs_lock.frame_index());
-                dbg!(bs_lock.picture_type());
-                dbg!(bs_lock.timestamp());
+                debug!("bs_lock.duration() = {:?}", bs_lock.duration());
+                debug!("bs_lock.frame_index() = {:?}", bs_lock.frame_index());
+                debug!("bs_lock.picture_type() = {:?}", bs_lock.picture_type());
+                debug!("bs_lock.timestamp() = {:?}", bs_lock.timestamp());
 
                 trace!("h264_buffer is {:?}", h264_buffer.get_ref().len());
                 self.frame_no += 1;

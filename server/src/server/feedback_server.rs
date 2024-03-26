@@ -93,11 +93,13 @@ impl LVFeedbackServer {
     }
 
     pub fn begin(&self) -> Arc<Mutex<u32>> {
+        info!("Starting feedback server");
         let bitrate_shared = Arc::new(Mutex::new(10000));
         let bitrate_shared_clone = bitrate_shared.clone();
         let bind_addr_clone = self.bind_addr.clone();
         thread::spawn(move || {
-            Self::start_receive_loop(&bind_addr_clone, bitrate_shared_clone);
+            Self::start_receive_loop(&bind_addr_clone, bitrate_shared_clone)
+                .expect("Failed to start feedback server");
         });
         bitrate_shared
     }

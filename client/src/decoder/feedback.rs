@@ -26,13 +26,11 @@ pub fn start(
             match feedback_stream {
                 Ok(mut feedback_stream) => {
                     debug!("connected to feedback server");
-
-                    let feedback_pkt = feedback_pkt.clone();
-                    feedback_timer.schedule_repeating(
-                        chrono::Duration::milliseconds(QUANTUM.into()),
-                        move || {
+                    loop {
+                        {
                             debug!("writing feedback packet to server");
                             let mut pkt = feedback_pkt.lock();
+                            debug!("feebdback packet is {:?}", pkt);
                             match feedback_stream.write(bytemuck::bytes_of(&*pkt)) {
                                 Ok(bytes) => debug!("wrote {} bytes to feedback server", bytes),
                                 Err(e) => {
@@ -47,8 +45,10 @@ pub fn start(
                             pkt.total_packets = 0;
                             pkt.lost_packets = 0;
                             pkt.ecc_decoder_failures = 0;
-                        },
-                    );
+                        }
+
+                        thread::sleep(std::time::Duration::from_millis(QUANTUM.into()));
+                    }
                 }
                 Err(e) => error!("Failed to unwrap feedback stream! {:?}", e),
             }

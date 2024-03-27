@@ -421,19 +421,27 @@ impl LVDecoder {
             match feedback_pkt.try_lock() {
                 Some(mut pkt) => {
                     // Reset our variables
-                    if pkt.total_packets == 0 {
-                        total_blocks = 0;
-                        out_of_order_blocks = 0;
-                        total_packets = 0;
-                        lost_packets = 0;
-                        ecc_decoder_failures = 0;
-                    }
+                    let reset = pkt.total_packets == 0;
+
+                    info!("total_blocks {}", total_blocks);
+                    info!("out_of_order_blocks {}", out_of_order_blocks);
+                    info!("total_packets {}", total_packets);
+                    info!("lost_packets {}", lost_packets);
+                    info!("ecc_decoder_failures {}", ecc_decoder_failures);
 
                     pkt.total_blocks = total_blocks;
                     pkt.out_of_order_blocks = out_of_order_blocks;
                     pkt.total_packets = total_packets;
                     pkt.lost_packets = lost_packets as u16;
                     pkt.ecc_decoder_failures = ecc_decoder_failures;
+
+                    if reset {
+                        total_blocks = 0;
+                        out_of_order_blocks = 0;
+                        total_packets = 0;
+                        lost_packets = 0;
+                        ecc_decoder_failures = 0;
+                    }
                 }
                 None => {
                     warn!("Failed to lock feedback packet")

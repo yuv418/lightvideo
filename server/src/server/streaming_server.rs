@@ -146,8 +146,11 @@ impl LVStreamingServer {
                 let possibly_new_bitrate =
                     self.bitrate_mtx.lock().expect("Failed to lock bitrate mtx");
                 if self.old_bitrate != *possibly_new_bitrate {
-                    debug!("Updating bitrate to {}", *possibly_new_bitrate);
-                    packager.update_bitrate(*possibly_new_bitrate);
+                    info!("Updating bitrate to {}", *possibly_new_bitrate);
+                    match packager.update_bitrate(*possibly_new_bitrate) {
+                        Ok(ook) => info!("updated bitrate"),
+                        Err(e) => error!("Failed to set bitrate with {:?}", e),
+                    }
                     self.old_bitrate = *possibly_new_bitrate;
                 }
             }

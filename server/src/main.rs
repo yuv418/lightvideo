@@ -37,7 +37,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     0,
                     1920,
                     1080,
-                    10000,
+                    80000,
                     quit_rx,
                     bitrate_mtx,
                 )?;

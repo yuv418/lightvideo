@@ -6,14 +6,15 @@ use std::time::Instant;
 use cudarc::driver::CudaDevice;
 use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
 use image::{ImageBuffer, Rgb};
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
     NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_RECONFIGURE_PARAMS_VER, _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
+    _NV_ENC_RECONFIGURE_PARAMS,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -278,18 +279,29 @@ impl LVEncoder for LVNvidiaEncoder {
             .averageBitRate
     }
     fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
-        unsafe { *self.enc_params.encodeConfig }
-            .rcParams
-            .averageBitRate = new_bitrate;
+        unsafe {
+            (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
+        }
 
-        let reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
+        info!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
+
+        let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
+            version: NV_ENC_RECONFIGURE_PARAMS_VER,
             reInitEncodeParams: self.enc_params,
             ..Default::default()
         };
 
-        self.enc_session
+        reconfigure_params.set_resetEncoder(1);
+        reconfigure_params.set_forceIDR(1);
+
+        match self
+            .enc_session
             .get_encoder()
-            .reconfigure_encoder(reconfigure_params);
+            .reconfigure_encoder(reconfigure_params)
+        {
+            Ok(k) => info!("finished reconfiguring encoder!"),
+            Err(e) => error!("failed to set bitrate {:?}", e),
+        }
 
         Ok(())
     }

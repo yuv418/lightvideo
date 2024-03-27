@@ -19,7 +19,7 @@ impl LVFeedbackServer {
 
     fn handle_feedback(mut stream: TcpStream, bitrate_mtx: Arc<Mutex<u32>>) {
         let mut msg_buffer = vec![0; LVFeedbackPacket::no_bytes()];
-        let mut bitrate = 10000;
+        let mut bitrate = 80000;
 
         loop {
             match stream.read(&mut msg_buffer[..]) {
@@ -45,6 +45,8 @@ impl LVFeedbackServer {
                     let congestion = feedback_packet.out_of_order_blocks as f32
                         / feedback_packet.total_blocks as f32;
 
+                    debug!("congestion is {}", congestion);
+
                     {
                         let mut bitrate_mtx_set =
                             bitrate_mtx.lock().expect("Failed to lock bitrate mutex");
@@ -54,16 +56,19 @@ impl LVFeedbackServer {
                                 // this multiplication is not just integer division
                                 // in case we want to change the multiplication constant
                                 // later
-                                (bitrate as f32 * 0.5) as u32
+                                (bitrate as f32 * 0.8) as u32
                             } else if congestion < 0.2 && congestion > 0.15 {
                                 bitrate
                             } else {
-                                bitrate + 200
+                                bitrate + 100000
+                                // (bitrate as f32 - 1000) as u32
                             }
                         };
 
                         // So we don't have to lock the mutex unnecessarily
                         bitrate = *bitrate_mtx_set;
+
+                        debug!("setting bitrate to {}", bitrate);
                     }
                 }
                 Err(e) => error!("Could not read bytes from client {:?}", e),
@@ -75,6 +80,7 @@ impl LVFeedbackServer {
         bind_addr: &str,
         bitrate_shared: Arc<Mutex<u32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        info!("connecting to feedback server at {}", bind_addr);
         let tcp_stream = TcpStream::connect(bind_addr)?;
 
         info!("connected to feedback server at {}", bind_addr);
@@ -86,7 +92,7 @@ impl LVFeedbackServer {
 
     pub fn begin(&self) -> Arc<Mutex<u32>> {
         info!("Starting feedback server");
-        let bitrate_shared = Arc::new(Mutex::new(10000));
+        let bitrate_shared = Arc::new(Mutex::new(80000));
         let bitrate_shared_clone = bitrate_shared.clone();
         let bind_addr_clone = self.bind_addr.clone();
         thread::spawn(move || {

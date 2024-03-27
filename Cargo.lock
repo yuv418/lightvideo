@@ -344,6 +344,7 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "bytes",
+ "chrono",
  "dcv-color-primitives",
  "flexi_logger",
  "flume",
@@ -359,6 +360,7 @@ dependencies = [
  "socket2",
  "statistics",
  "thingbuf",
+ "timer",
  "webrtc-util",
  "wgpu",
  "winit",
@@ -2422,6 +2424,15 @@ dependencies = [
  "flate2",
  "jpeg-decoder",
  "weezl",
+]
+
+[[package]]
+name = "timer"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31d42176308937165701f50638db1c31586f183f1aab416268216577aec7306b"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]

@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Some("server") => match std::env::args().nth(2) {
             Some(addr) => {
                 let target_addr = std::env::args().nth(3).unwrap();
-                let mut feedback_addr: SocketAddr = addr.parse()?;
+                let mut feedback_addr: SocketAddr = target_addr.parse()?;
 
                 feedback_addr.set_port(feedback_addr.port() + 2);
 

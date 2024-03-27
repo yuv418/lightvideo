@@ -1,6 +1,7 @@
 use std::{
     io::Write,
     net::{SocketAddrV4, TcpStream, UdpSocket},
+    sync::Arc,
     thread,
     time::Instant,
 };
@@ -8,6 +9,7 @@ use std::{
 use bytes::BytesMut;
 use log::{debug, error, info};
 use net::feedback_packet::LVFeedbackPacket;
+use parking_lot::Mutex;
 use socket2::Socket;
 use thingbuf::mpsc::{blocking::Sender, errors::Closed};
 
@@ -49,13 +51,14 @@ impl LVNetwork {
     pub fn run(
         &self,
         packet_push: Sender<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let addr = self.addr.clone();
 
         thread::Builder::new()
             .name("network_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::socket_loop(packet_push, &addr) {
+                if let Err(e) = Self::socket_loop(packet_push, feedback_pkt, &addr) {
                     error!("socket receive loop failed with error {:?}", e);
                 } else {
                     info!("socket receive loop exited.");
@@ -67,6 +70,7 @@ impl LVNetwork {
 
     fn socket_loop(
         packet_push: Sender<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
         addr: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let sock = UdpSocket::bind(addr)?;
@@ -79,6 +83,12 @@ impl LVNetwork {
         let sock: UdpSocket = sock.into();
         debug!("starting thread for socket, listening on {}", addr);
 
+        let mut feedback_addr: SocketAddrV4 = addr.parse()?;
+        feedback_addr.set_port(feedback_addr.port() + 2);
+
+        debug!("initializing feedback server to {:?}", feedback_addr);
+        // TODO: don't fail so loudly.
+        feedback::start(&feedback_addr.to_string(), feedback_pkt.clone())?;
         loop {
             // By using the packet push, we avoid allocating on the heap every iteration.
             match packet_push.try_send_ref() {

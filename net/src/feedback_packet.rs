@@ -11,7 +11,7 @@ const EMPTY_PKT: LVFeedbackPacket = LVFeedbackPacket {
 #[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
 pub struct LVFeedbackPacket {
     // In ms, a u16 limits the max time quantum if we use ms
-    // but ~25ms should be fine.
+    // but ~25s max should be fine.
     pub time_quantum: u16,
     // Number of total blocks sent per quantum
     pub total_blocks: u16,

@@ -75,19 +75,11 @@ impl LVFeedbackServer {
         bind_addr: &str,
         bitrate_shared: Arc<Mutex<u32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let listener = TcpListener::bind(bind_addr)?;
-        info!("feedback server is listening on {}", bind_addr);
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => Self::handle_feedback(stream, bitrate_shared.clone()),
-                Err(e) => {
-                    error!(
-                        "Could not accept incoming feedback stream from client: {:?}",
-                        e
-                    )
-                }
-            }
-        }
+        let tcp_stream = TcpStream::connect(bind_addr)?;
+
+        info!("connected to feedback server at {}", bind_addr);
+
+        Self::handle_feedback(tcp_stream, bitrate_shared.clone());
 
         Ok(())
     }

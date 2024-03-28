@@ -290,7 +290,7 @@ impl LVDecoder {
                     match rs_decoder.decode() {
                         Ok(data) => {
                             for (k, mut v) in data.restored_original_iter() {
-                                debug!("RECOVERY: recovered packet {}", k);
+                                info!("RECOVERY: recovered packet {}", k);
 
                                 // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
                                 let mut slc = &v[..rs_pkt_sizes[k] as usize];
@@ -423,11 +423,11 @@ impl LVDecoder {
                     // Reset our variables
                     let reset = pkt.total_packets == 0;
 
-                    info!("total_blocks {}", total_blocks);
-                    info!("out_of_order_blocks {}", out_of_order_blocks);
-                    info!("total_packets {}", total_packets);
-                    info!("lost_packets {}", lost_packets);
-                    info!("ecc_decoder_failures {}", ecc_decoder_failures);
+                    debug!("total_blocks {}", total_blocks);
+                    debug!("out_of_order_blocks {}", out_of_order_blocks);
+                    debug!("total_packets {}", total_packets);
+                    debug!("lost_packets {}", lost_packets);
+                    debug!("ecc_decoder_failures {}", ecc_decoder_failures);
 
                     pkt.total_blocks = total_blocks;
                     pkt.out_of_order_blocks = out_of_order_blocks;

@@ -6,12 +6,14 @@ use log::{debug, info, warn};
 const STATOUT: &'static str = "statout";
 
 pub enum LVDataType {
+    XYData,
     TimeSeries,
     Aggregate,
 }
 
 #[derive(Debug)]
 pub enum LVDataPoint {
+    XYValue((f32, f32)),
     TimeElapsed(Duration),
     FloatValue(f32),
     Increment,
@@ -19,6 +21,7 @@ pub enum LVDataPoint {
 
 #[derive(Debug)]
 enum LVStoredData {
+    XYData(Vec<(f32, f32)>),
     TimeSeries(Vec<LVDataPoint>),
 
     // Some kind of counter, eg. number of dropped packets/frames
@@ -50,6 +53,9 @@ impl LVStatistics {
 
     pub fn register_data(&mut self, data_name: String, data_type: LVDataType) {
         match data_type {
+            LVDataType::XYData => {
+                self.data.insert(data_name, LVStoredData::XYData(vec![]));
+            }
             LVDataType::TimeSeries => {
                 self.data
                     .insert(data_name, LVStoredData::TimeSeries(vec![]));
@@ -80,6 +86,16 @@ impl LVStatistics {
                     } else {
                         warn!(
                             "Stored data is type aggregate but data_point given was {:?}",
+                            data_point
+                        )
+                    }
+                }
+                LVStoredData::XYData(current_array) => {
+                    if let LVDataPoint::XYValue(point) = data_point {
+                        current_array.push(point)
+                    } else {
+                        warn!(
+                            "Stored data is type XYData but data_point given was {:?}",
                             data_point
                         )
                     }
@@ -131,6 +147,17 @@ impl LVStatistics {
                 }
                 LVStoredData::Aggregate(aggregated_value) => {
                     std::fs::write(out_file, aggregated_value.to_string())?;
+                }
+                LVStoredData::XYData(value_s) => {
+                    let mut f = File::create(out_file)?;
+                    // convert data to csv
+                    if value_s.len() > 0 {
+                        // write header
+                        write!(f, "x,y\n")?;
+                        for (x, y) in value_s {
+                            write!(f, "{},{}\n", x, y)?;
+                        }
+                    }
                 }
             }
         }

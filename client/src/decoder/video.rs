@@ -290,7 +290,7 @@ impl LVDecoder {
                     match rs_decoder.decode() {
                         Ok(data) => {
                             for (k, mut v) in data.restored_original_iter() {
-                                debug!("RECOVERY: recovered packet {}", k);
+                                info!("RECOVERY: recovered packet {}", k);
 
                                 // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
                                 let mut slc = &v[..rs_pkt_sizes[k] as usize];
@@ -421,19 +421,27 @@ impl LVDecoder {
             match feedback_pkt.try_lock() {
                 Some(mut pkt) => {
                     // Reset our variables
-                    if pkt.total_packets == 0 {
-                        total_blocks = 0;
-                        out_of_order_blocks = 0;
-                        total_packets = 0;
-                        lost_packets = 0;
-                        ecc_decoder_failures = 0;
-                    }
+                    let reset = pkt.total_packets == 0;
+
+                    debug!("total_blocks {}", total_blocks);
+                    debug!("out_of_order_blocks {}", out_of_order_blocks);
+                    debug!("total_packets {}", total_packets);
+                    debug!("lost_packets {}", lost_packets);
+                    debug!("ecc_decoder_failures {}", ecc_decoder_failures);
 
                     pkt.total_blocks = total_blocks;
                     pkt.out_of_order_blocks = out_of_order_blocks;
                     pkt.total_packets = total_packets;
                     pkt.lost_packets = lost_packets as u16;
                     pkt.ecc_decoder_failures = ecc_decoder_failures;
+
+                    if reset {
+                        total_blocks = 0;
+                        out_of_order_blocks = 0;
+                        total_packets = 0;
+                        lost_packets = 0;
+                        ecc_decoder_failures = 0;
+                    }
                 }
                 None => {
                     warn!("Failed to lock feedback packet")

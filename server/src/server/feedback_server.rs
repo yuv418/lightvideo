@@ -5,6 +5,8 @@ use std::thread;
 
 use log::{debug, error, info};
 use net::feedback_packet::LVFeedbackPacket;
+use statistics::collector::LVStatisticsCollector;
+use statistics::statistics::{LVDataPoint, LVDataType};
 
 pub struct LVFeedbackServer {
     bind_addr: String,
@@ -20,6 +22,14 @@ impl LVFeedbackServer {
     fn handle_feedback(mut stream: TcpStream, bitrate_mtx: Arc<Mutex<u32>>) {
         let mut msg_buffer = vec![0; LVFeedbackPacket::no_bytes()];
         let mut bitrate = 80000;
+        let mut oo_blocks = 0;
+        let mut decoder_failures = 0;
+
+        LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
+        LVStatisticsCollector::register_data(
+            "server_bitrate_ecc_decoder_failures",
+            LVDataType::XYData,
+        );
 
         loop {
             match stream.read(&mut msg_buffer[..]) {
@@ -52,18 +62,34 @@ impl LVFeedbackServer {
                             bitrate_mtx.lock().expect("Failed to lock bitrate mutex");
 
                         *bitrate_mtx_set = {
-                            if congestion > 0.2 {
+                            if congestion > 0.001 || feedback_packet.ecc_decoder_failures > 0 {
                                 // this multiplication is not just integer division
                                 // in case we want to change the multiplication constant
                                 // later
-                                (bitrate as f32 * 0.8) as u32
+                                (bitrate as f32 * 0.6) as u32
                             } else if congestion < 0.2 && congestion > 0.15 {
                                 bitrate
                             } else {
-                                bitrate + 100000
+                                bitrate + 400000
                                 // (bitrate as f32 - 1000) as u32
                             }
                         };
+
+                        // bitrate changed
+                        oo_blocks += feedback_packet.out_of_order_blocks;
+                        decoder_failures += feedback_packet.ecc_decoder_failures;
+                        if bitrate != *bitrate_mtx_set {
+                            LVStatisticsCollector::update_data(
+                                "server_bitrate_oo_blocks",
+                                LVDataPoint::XYValue((bitrate as f32, oo_blocks as f32)),
+                            );
+                            LVStatisticsCollector::update_data(
+                                "server_bitrate_ecc_decoder_failures",
+                                LVDataPoint::XYValue((bitrate as f32, decoder_failures as f32)),
+                            );
+                            oo_blocks = 0;
+                            decoder_failures = 0;
+                        }
 
                         // So we don't have to lock the mutex unnecessarily
                         bitrate = *bitrate_mtx_set;

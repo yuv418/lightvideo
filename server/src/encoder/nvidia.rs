@@ -283,7 +283,7 @@ impl LVEncoder for LVNvidiaEncoder {
             (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
         }
 
-        info!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
+        debug!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
 
         let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
             version: NV_ENC_RECONFIGURE_PARAMS_VER,
@@ -299,7 +299,7 @@ impl LVEncoder for LVNvidiaEncoder {
             .get_encoder()
             .reconfigure_encoder(reconfigure_params)
         {
-            Ok(k) => info!("finished reconfiguring encoder!"),
+            Ok(k) => debug!("finished reconfiguring encoder!"),
             Err(e) => error!("failed to set bitrate {:?}", e),
         }
 

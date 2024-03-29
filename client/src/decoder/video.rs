@@ -287,6 +287,7 @@ impl LVDecoder {
                         rs_inorder_packets, rs_total_packets, block_id
                     );
 
+                    out_of_order_blocks += 1;
                     match rs_decoder.decode() {
                         Ok(data) => {
                             for (k, mut v) in data.restored_original_iter() {
@@ -393,7 +394,6 @@ impl LVDecoder {
                     "packet out of order: current {} prev {}",
                     lvheader.fragment_index, lvheader_prev_fragment_index
                 );
-                out_of_order_blocks += 1;
                 lost_packets += lvheader.fragment_index
                     - ((lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS);
 

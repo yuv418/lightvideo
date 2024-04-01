@@ -4,6 +4,7 @@ const EMPTY_PKT: LVFeedbackPacket = LVFeedbackPacket {
     out_of_order_blocks: 0,
     total_packets: 0,
     ecc_decoder_failures: 0,
+    average_buffer_occupancy: 0,
     lost_packets: 0,
 };
 
@@ -25,6 +26,9 @@ pub struct LVFeedbackPacket {
     // Number of failures to decode in the ECC decoder. To find the
     // ratio of failures : attempted decodes, we can simply do self.out_of_order_blocks/self.ecc_decoder_failures
     pub ecc_decoder_failures: u16,
+
+    // Average buffer occupancy over the last time quantum on the client
+    pub average_buffer_occupancy: u32,
 }
 
 impl LVFeedbackPacket {

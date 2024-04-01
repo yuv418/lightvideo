@@ -1,4 +1,4 @@
-use std::{net::SocketAddrV4, sync::Arc};
+use std::{net::SocketAddrV4, os::fd::RawFd, sync::Arc};
 
 use decoder::{
     feedback,
@@ -9,7 +9,7 @@ use double_buffer::DoubleBuffer;
 use flexi_logger::Logger;
 use log::{error, info};
 use net::feedback_packet::LVFeedbackPacket;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use statistics::collector::LVStatisticsCollector;
 use ui::VideoUI;
 
@@ -36,10 +36,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let feedback_pkt: Arc<Mutex<LVFeedbackPacket>> =
                 Arc::new(Mutex::new(Default::default()));
 
+            let udp_fd: Arc<RwLock<Option<RawFd>>> = Arc::new(RwLock::new(None));
+
             let receiver = LVNetwork::new(&addr)?;
 
-            receiver.run(pkt_push, feedback_pkt.clone());
-            LVDecoder::run(db, pkt_recv, feedback_pkt.clone());
+            receiver.run(pkt_push, feedback_pkt.clone(), udp_fd.clone());
+            LVDecoder::run(db, pkt_recv, feedback_pkt.clone(), udp_fd);
 
             // Start ui
             let ui = VideoUI::new(quit_rx)?;

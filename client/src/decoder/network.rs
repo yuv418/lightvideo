@@ -1,6 +1,8 @@
 use std::{
+    borrow::BorrowMut,
     io::Write,
     net::{SocketAddrV4, TcpStream, UdpSocket},
+    os::fd::{AsRawFd, RawFd},
     sync::Arc,
     thread,
     time::Instant,
@@ -9,7 +11,7 @@ use std::{
 use bytes::BytesMut;
 use log::{debug, error, info};
 use net::feedback_packet::LVFeedbackPacket;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use socket2::Socket;
 use thingbuf::mpsc::{blocking::Sender, errors::Closed};
 
@@ -52,13 +54,14 @@ impl LVNetwork {
         &self,
         packet_push: Sender<LVPacketHolder>,
         feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let addr = self.addr.clone();
 
         thread::Builder::new()
             .name("network_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::socket_loop(packet_push, feedback_pkt, &addr) {
+                if let Err(e) = Self::socket_loop(packet_push, feedback_pkt, &addr, udp_fd) {
                     error!("socket receive loop failed with error {:?}", e);
                 } else {
                     info!("socket receive loop exited.");
@@ -72,6 +75,7 @@ impl LVNetwork {
         packet_push: Sender<LVPacketHolder>,
         feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
         addr: &str,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let sock = UdpSocket::bind(addr)?;
         let sock = Socket::from(sock);
@@ -81,6 +85,8 @@ impl LVNetwork {
         debug!("new recv size {:?}", sock.recv_buffer_size());
 
         let sock: UdpSocket = sock.into();
+        *udp_fd.write() = Some(sock.as_raw_fd());
+
         debug!("starting thread for socket, listening on {}", addr);
 
         let mut feedback_addr: SocketAddrV4 = addr.parse()?;

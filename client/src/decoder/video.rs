@@ -5,14 +5,14 @@ use openh264::{
     decoder::{Decoder, DecoderConfig},
     formats::YUVSource,
 };
-use parking_lot::Mutex;
+use parking_lot::{Mutex, RwLock};
 use reed_solomon_simd::ReedSolomonDecoder;
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
 use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
 };
-use std::{collections::VecDeque, sync::Arc, thread, time::Instant};
+use std::{collections::VecDeque, os::fd::RawFd, sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
@@ -25,6 +25,11 @@ use net::{
 
 use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
+
+use nix::ioctl_read_bad;
+use nix::libc::TIOCOUTQ;
+
+ioctl_read_bad!(tiocoutq, TIOCOUTQ, u32);
 
 pub struct LVDecoder {
     width: u32,
@@ -61,16 +66,32 @@ impl LVDecoder {
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
         feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) {
         thread::Builder::new()
             .name("decoder_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::decode_loop(double_buffer, packet_recv, feedback_pkt) {
+                if let Err(e) = Self::decode_loop(double_buffer, packet_recv, feedback_pkt, udp_fd)
+                {
                     error!("decode loop failed with error {:?}", e);
                 } else {
                     info!("decode receive loop exited.");
                 }
             });
+    }
+
+    pub fn bytes_in_send_queue(
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
+    ) -> Result<Option<u32>, Box<dyn std::error::Error>> {
+        // info!("udp fd set to {:?}", self.udp_fd);
+        match *udp_fd.read() {
+            Some(fd) => unsafe {
+                let mut data = 0;
+                tiocoutq(fd, &mut data)?;
+                Ok(Some(data))
+            },
+            None => Ok(None),
+        }
     }
 
     pub fn depacketize_decode(
@@ -201,6 +222,7 @@ impl LVDecoder {
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
         feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
 
@@ -247,6 +269,9 @@ impl LVDecoder {
         let mut total_packets = 0;
         let mut lost_packets = 0;
         let mut ecc_decoder_failures = 0;
+
+        let mut average_qocc = 0;
+        let mut average_qocc_iterations = 0;
 
         // TODO what happened to re-ordering RTP packets?
         loop {
@@ -418,6 +443,16 @@ impl LVDecoder {
             lvheader_prev_fragment_index = lvheader.fragment_index as u32;
             video_dec.depacketize_decode(&packet)?;
 
+            match Self::bytes_in_send_queue(udp_fd.clone()) {
+                Ok(Some(d)) => {
+                    average_qocc += d;
+                    average_qocc_iterations += 1;
+                }
+                _ => {
+                    warn!("udp fd none or err");
+                }
+            }
+
             match feedback_pkt.try_lock() {
                 Some(mut pkt) => {
                     // Reset our variables
@@ -434,6 +469,7 @@ impl LVDecoder {
                     pkt.total_packets = total_packets;
                     pkt.lost_packets = lost_packets as u16;
                     pkt.ecc_decoder_failures = ecc_decoder_failures;
+                    pkt.average_buffer_occupancy = average_qocc / average_qocc_iterations;
 
                     if reset {
                         total_blocks = 0;
@@ -441,6 +477,8 @@ impl LVDecoder {
                         total_packets = 0;
                         lost_packets = 0;
                         ecc_decoder_failures = 0;
+                        average_qocc = 0;
+                        average_qocc_iterations = 0;
                     }
                 }
                 None => {

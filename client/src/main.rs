@@ -8,7 +8,7 @@ use decoder::{
 use double_buffer::DoubleBuffer;
 use flexi_logger::Logger;
 use log::{error, info};
-use net::feedback_packet::LVFeedbackPacket;
+use net::feedback_packet::{LVAck, LVFeedbackPacket};
 use parking_lot::{Mutex, RwLock};
 use statistics::collector::LVStatisticsCollector;
 use ui::VideoUI;
@@ -33,8 +33,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Set up mpsc
             let (pkt_push, pkt_recv) = thingbuf::mpsc::blocking::channel::<LVPacketHolder>(1000);
 
-            let feedback_pkt: Arc<Mutex<LVFeedbackPacket>> =
-                Arc::new(Mutex::new(Default::default()));
+            let feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>> =
+                Arc::new(Mutex::new((Default::default(), Default::default())));
 
             let udp_fd: Arc<RwLock<Option<RawFd>>> = Arc::new(RwLock::new(None));
 

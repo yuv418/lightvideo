@@ -30,7 +30,7 @@ pub struct LVErasureInformation {
     pub pkt_sizes: [u16; EC_RATIO_REGULAR_PACKETS as usize],
     // 64-bit UNIX timestamp denoting when the packet was sent from the server side.
     // This allows us to calculate the RTT (round-trip time) for a packet.
-    pub send_timestamp: u64,
+    pub send_timestamp: u128,
 }
 
 impl LVErasureInformation {
@@ -38,7 +38,7 @@ impl LVErasureInformation {
         3 * size_of::<u32>()
             + size_of::<bool>()
             + size_of::<[u16; EC_RATIO_REGULAR_PACKETS as usize]>()
-            + size_of::<u64>()
+            + size_of::<u128>()
     }
 
     // TODO
@@ -96,9 +96,9 @@ impl LVErasureInformation {
             fragment_index: u32::from_be_bytes(buf[9..13].try_into().unwrap()),
             pkt_sizes,
             // 2 is because sizeof(u16) == 2
-            send_timestamp: u64::from_be_bytes(
+            send_timestamp: u128::from_be_bytes(
                 buf[13 + (2 * EC_RATIO_REGULAR_PACKETS as usize)
-                    ..13 + (2 * EC_RATIO_REGULAR_PACKETS as usize) + 8]
+                    ..13 + (2 * EC_RATIO_REGULAR_PACKETS as usize) + 16]
                     .try_into()
                     .unwrap(),
             ),

@@ -1,3 +1,6 @@
+pub const ACK_TYPE: u8 = 0;
+pub const FEEDBACK_TYPE: u8 = 1;
+
 const EMPTY_PKT: LVFeedbackPacket = LVFeedbackPacket {
     time_quantum: 0,
     total_blocks: 0,
@@ -8,12 +11,20 @@ const EMPTY_PKT: LVFeedbackPacket = LVFeedbackPacket {
     lost_packets: 0,
 };
 
+#[repr(C)]
+#[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
+pub struct LVFeedbackHeader {
+    pub feedback_type: u8,
+}
+
 // Used for RTT calculation
+#[repr(C, packed)]
+#[derive(bytemuck::NoUninit, Clone, Copy, Default, Debug)]
 pub struct LVAck {
     // Sequence number for packet
-    pub rtp_seqno: u32,
+    pub rtp_seqno: u16,
     // Time
-    pub send_ts: u64,
+    pub send_ts: u128,
 }
 
 #[repr(C)]

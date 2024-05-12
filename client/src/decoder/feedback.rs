@@ -3,17 +3,18 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::Arc,
     thread,
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use log::{debug, error};
-use net::feedback_packet::LVFeedbackPacket;
+use net::feedback_packet::{LVAck, LVFeedbackPacket, ACK_TYPE, FEEDBACK_TYPE};
 use parking_lot::Mutex;
 
 const QUANTUM: u16 = 1000;
 
 pub fn start(
     feedback_addr: &str,
-    feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+    feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let feedback_addr = feedback_addr.to_owned();
     let x = TcpListener::bind(feedback_addr)?;
@@ -31,7 +32,12 @@ pub fn start(
                             debug!("writing feedback packet to server");
                             let mut pkt = feedback_pkt.lock();
                             debug!("feebdback packet is {:?}", pkt);
-                            match feedback_stream.write(bytemuck::bytes_of(&*pkt)) {
+
+                            // Copying *rolls eyes*
+                            let mut data: Vec<u8> = bytemuck::bytes_of(&pkt.1).to_owned();
+                            data.insert(0, FEEDBACK_TYPE);
+
+                            match feedback_stream.write(&data) {
                                 Ok(bytes) => debug!("wrote {} bytes to feedback server", bytes),
                                 Err(e) => {
                                     error!("failed to send feedbacket packet with error {:?}", e)
@@ -39,12 +45,28 @@ pub fn start(
                             }
 
                             // reset the feedback packet
-                            pkt.time_quantum = QUANTUM;
-                            pkt.total_blocks = 0;
-                            pkt.out_of_order_blocks = 0;
-                            pkt.total_packets = 0;
-                            pkt.lost_packets = 0;
-                            pkt.ecc_decoder_failures = 0;
+                            pkt.1.time_quantum = QUANTUM;
+                            pkt.1.total_blocks = 0;
+                            pkt.1.out_of_order_blocks = 0;
+                            pkt.1.total_packets = 0;
+                            pkt.1.lost_packets = 0;
+                            pkt.1.ecc_decoder_failures = 0;
+
+                            // send the ACK packet
+                            pkt.0.send_ts = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+
+                            let mut data: Vec<u8> = bytemuck::bytes_of(&pkt.0).to_owned();
+                            data.insert(0, ACK_TYPE);
+                            match feedback_stream.write(&data) {
+                                Ok(bytes) => debug!("wrote {} ack bytes to feedback server", bytes),
+                                Err(e) => {
+                                    error!("failed to send ack packet with error {:?}", e)
+                                }
+                            }
+                            // no need to reset the ACK as we just set it the next time.
                         }
 
                         thread::sleep(std::time::Duration::from_millis(QUANTUM.into()));

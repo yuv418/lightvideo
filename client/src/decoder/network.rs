@@ -10,7 +10,7 @@ use std::{
 
 use bytes::BytesMut;
 use log::{debug, error, info};
-use net::feedback_packet::LVFeedbackPacket;
+use net::feedback_packet::{LVAck, LVFeedbackPacket};
 use parking_lot::{Mutex, RwLock};
 use socket2::Socket;
 use thingbuf::mpsc::{blocking::Sender, errors::Closed};
@@ -53,7 +53,7 @@ impl LVNetwork {
     pub fn run(
         &self,
         packet_push: Sender<LVPacketHolder>,
-        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let addr = self.addr.clone();
@@ -73,7 +73,7 @@ impl LVNetwork {
 
     fn socket_loop(
         packet_push: Sender<LVPacketHolder>,
-        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         addr: &str,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {

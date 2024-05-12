@@ -17,7 +17,7 @@ use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
 use net::{
-    feedback_packet::{self, LVFeedbackPacket},
+    feedback_packet::{self, LVAck, LVFeedbackPacket},
     packet::{
         LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
     },
@@ -65,7 +65,7 @@ impl LVDecoder {
     pub fn run(
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
-        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) {
         thread::Builder::new()
@@ -221,7 +221,7 @@ impl LVDecoder {
     pub fn decode_loop(
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
-        feedback_pkt: Arc<Mutex<LVFeedbackPacket>>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
@@ -456,7 +456,7 @@ impl LVDecoder {
             match feedback_pkt.try_lock() {
                 Some(mut pkt) => {
                     // Reset our variables
-                    let reset = pkt.total_packets == 0;
+                    let reset = pkt.1.total_packets == 0;
 
                     debug!("total_blocks {}", total_blocks);
                     debug!("out_of_order_blocks {}", out_of_order_blocks);
@@ -464,12 +464,12 @@ impl LVDecoder {
                     debug!("lost_packets {}", lost_packets);
                     debug!("ecc_decoder_failures {}", ecc_decoder_failures);
 
-                    pkt.total_blocks = total_blocks;
-                    pkt.out_of_order_blocks = out_of_order_blocks;
-                    pkt.total_packets = total_packets;
-                    pkt.lost_packets = lost_packets as u16;
-                    pkt.ecc_decoder_failures = ecc_decoder_failures;
-                    pkt.average_buffer_occupancy = average_qocc / average_qocc_iterations;
+                    pkt.1.total_blocks = total_blocks;
+                    pkt.1.out_of_order_blocks = out_of_order_blocks;
+                    pkt.1.total_packets = total_packets;
+                    pkt.1.lost_packets = lost_packets as u16;
+                    pkt.1.ecc_decoder_failures = ecc_decoder_failures;
+                    pkt.1.average_buffer_occupancy = average_qocc / average_qocc_iterations;
 
                     if reset {
                         total_blocks = 0;
@@ -480,6 +480,8 @@ impl LVDecoder {
                         average_qocc = 0;
                         average_qocc_iterations = 0;
                     }
+
+                    pkt.0.rtp_seqno = packet.header.sequence_number;
                 }
                 None => {
                     warn!("Failed to lock feedback packet")

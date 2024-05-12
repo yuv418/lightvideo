@@ -8,6 +8,14 @@ const EMPTY_PKT: LVFeedbackPacket = LVFeedbackPacket {
     lost_packets: 0,
 };
 
+// Used for RTT calculation
+pub struct LVAck {
+    // Sequence number for packet
+    pub rtp_seqno: u32,
+    // Time
+    pub send_ts: u64,
+}
+
 #[repr(C)]
 #[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
 pub struct LVFeedbackPacket {

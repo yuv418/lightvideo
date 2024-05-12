@@ -70,7 +70,7 @@ impl LVErasureInformation {
             }
         }
 
-        for byt in self.timestamp.to_be_bytes() {
+        for byt in self.send_timestamp.to_be_bytes() {
             buf[i] = byt;
             i += 1;
         }

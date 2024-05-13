@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use log::{debug, error, info};
-use net::feedback_packet::LVFeedbackPacket;
+use net::feedback_packet::{LVFeedbackPacket, ACK_TYPE, FEEDBACK_TYPE};
 use statistics::collector::LVStatisticsCollector;
 use statistics::statistics::{LVDataPoint, LVDataType};
 
@@ -34,67 +34,84 @@ impl LVFeedbackServer {
         loop {
             match stream.read(&mut msg_buffer[..]) {
                 Ok(data_read) => {
-                    let feedback_packet: &LVFeedbackPacket = bytemuck::from_bytes(&msg_buffer[..]);
-                    debug!("Feedback packet is {:?}", feedback_packet);
-
-                    // Algorithm: we have the following information:
-                    // - time quantum
-                    // - total blocks
-                    // - out of order blocks
-                    // - total_packets (not using this yet)
-                    // - lost_packets (not using this yet)
-                    // - total RS decoder failures
-
-                    // congestion = [(out of order blocks)/(total blocks)]
-
-                    // bitrate =
-                    //   (bitrate + 200) if congestion > 0.2
-                    //   (bitrate) if 0.15 < congestion > 0.2 -- stable
-                    //   (bitrate * 0.5) if (congestion < 0.15) or (decoder_failures > 0)
-
-                    let congestion = feedback_packet.out_of_order_blocks as f32
-                        / feedback_packet.total_blocks as f32;
-
-                    debug!("congestion is {}", congestion);
-
-                    {
-                        let mut bitrate_mtx_set =
-                            bitrate_mtx.lock().expect("Failed to lock bitrate mutex");
-
-                        *bitrate_mtx_set = {
-                            if congestion > 0.001 || feedback_packet.ecc_decoder_failures > 0 {
-                                // this multiplication is not just integer division
-                                // in case we want to change the multiplication constant
-                                // later
-                                (bitrate as f32 * 0.6) as u32
-                            } else if congestion < 0.2 && congestion > 0.15 {
-                                bitrate
-                            } else {
-                                bitrate + 400000
-                                // (bitrate as f32 - 1000) as u32
-                            }
-                        };
-
-                        // bitrate changed
-                        oo_blocks += feedback_packet.out_of_order_blocks;
-                        decoder_failures += feedback_packet.ecc_decoder_failures;
-                        if bitrate != *bitrate_mtx_set {
-                            LVStatisticsCollector::update_data(
-                                "server_bitrate_oo_blocks",
-                                LVDataPoint::XYValue((bitrate as f32, oo_blocks as f32)),
-                            );
-                            LVStatisticsCollector::update_data(
-                                "server_bitrate_ecc_decoder_failures",
-                                LVDataPoint::XYValue((bitrate as f32, decoder_failures as f32)),
-                            );
-                            oo_blocks = 0;
-                            decoder_failures = 0;
+                    let feedback_type = msg_buffer[0];
+                    match feedback_type {
+                        ACK_TYPE => {
+                            println!("ack type packet ")
                         }
+                        FEEDBACK_TYPE => {
+                            let feedback_packet: &LVFeedbackPacket =
+                                bytemuck::from_bytes(&msg_buffer[1..]);
+                            debug!("Feedback packet is {:?}", feedback_packet);
 
-                        // So we don't have to lock the mutex unnecessarily
-                        bitrate = *bitrate_mtx_set;
+                            // Algorithm: we have the following information:
+                            // - time quantum
+                            // - total blocks
+                            // - out of order blocks
+                            // - total_packets (not using this yet)
+                            // - lost_packets (not using this yet)
+                            // - total RS decoder failures
 
-                        debug!("setting bitrate to {}", bitrate);
+                            // congestion = [(out of order blocks)/(total blocks)]
+
+                            // bitrate =
+                            //   (bitrate + 200) if congestion > 0.2
+                            //   (bitrate) if 0.15 < congestion > 0.2 -- stable
+                            //   (bitrate * 0.5) if (congestion < 0.15) or (decoder_failures > 0)
+
+                            let congestion = feedback_packet.out_of_order_blocks as f32
+                                / feedback_packet.total_blocks as f32;
+
+                            debug!("congestion is {}", congestion);
+
+                            {
+                                let mut bitrate_mtx_set =
+                                    bitrate_mtx.lock().expect("Failed to lock bitrate mutex");
+
+                                *bitrate_mtx_set = {
+                                    if congestion > 0.001
+                                        || feedback_packet.ecc_decoder_failures > 0
+                                    {
+                                        // this multiplication is not just integer division
+                                        // in case we want to change the multiplication constant
+                                        // later
+                                        (bitrate as f32 * 0.6) as u32
+                                    } else if congestion < 0.2 && congestion > 0.15 {
+                                        bitrate
+                                    } else {
+                                        bitrate + 400000
+                                        // (bitrate as f32 - 1000) as u32
+                                    }
+                                };
+
+                                // bitrate changed
+                                oo_blocks += feedback_packet.out_of_order_blocks;
+                                decoder_failures += feedback_packet.ecc_decoder_failures;
+                                if bitrate != *bitrate_mtx_set {
+                                    LVStatisticsCollector::update_data(
+                                        "server_bitrate_oo_blocks",
+                                        LVDataPoint::XYValue((bitrate as f32, oo_blocks as f32)),
+                                    );
+                                    LVStatisticsCollector::update_data(
+                                        "server_bitrate_ecc_decoder_failures",
+                                        LVDataPoint::XYValue((
+                                            bitrate as f32,
+                                            decoder_failures as f32,
+                                        )),
+                                    );
+                                    oo_blocks = 0;
+                                    decoder_failures = 0;
+                                }
+
+                                // So we don't have to lock the mutex unnecessarily
+                                bitrate = *bitrate_mtx_set;
+
+                                debug!("setting bitrate to {}", bitrate);
+                            }
+                        }
+                        _ => {
+                            error!("unknown feedback packet type!")
+                        }
                     }
                 }
                 Err(e) => error!("Could not read bytes from client {:?}", e),

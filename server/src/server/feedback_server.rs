@@ -35,9 +35,10 @@ impl LVFeedbackServer {
             match stream.read(&mut msg_buffer[..]) {
                 Ok(data_read) => {
                     let feedback_type = msg_buffer[0];
+                    info!("feedback type is {}", feedback_type);
                     match feedback_type {
                         ACK_TYPE => {
-                            println!("ack type packet ")
+                            info!("ack type packet")
                         }
                         FEEDBACK_TYPE => {
                             let feedback_packet: &LVFeedbackPacket =

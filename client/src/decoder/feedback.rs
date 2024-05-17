@@ -34,7 +34,7 @@ pub fn start(
                             debug!("feebdback packet is {:?}", pkt);
 
                             // Copying *rolls eyes*
-                            let mut data: Vec<u8> = bytemuck::bytes_of(&pkt.1).to_owned();
+                            let mut data: Vec<u8> = bincode::serialize(&pkt.1).unwrap();
                             data.insert(0, FEEDBACK_TYPE);
 
                             match feedback_stream.write(&data) {
@@ -58,7 +58,7 @@ pub fn start(
                                 .unwrap()
                                 .as_millis();
 
-                            let mut data: Vec<u8> = bytemuck::bytes_of(&pkt.0).to_owned();
+                            let mut data: Vec<u8> = bincode::serialize(&pkt.0).unwrap();
                             data.insert(0, ACK_TYPE);
                             match feedback_stream.write(&data) {
                                 Ok(bytes) => debug!("wrote {} ack bytes to feedback server", bytes),

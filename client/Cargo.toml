@@ -46,3 +46,6 @@ net = { path = "../net" }
 timer = "0.2"
 chrono = "0.4"
 nix = { version = "0.28", features = ["ioctl"] }
+
+# Neworking serialization
+bincode = "1"

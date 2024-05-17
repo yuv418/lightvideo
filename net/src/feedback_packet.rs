@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 pub const ACK_TYPE: u8 = 0;
 pub const FEEDBACK_TYPE: u8 = 1;
 
@@ -19,7 +21,7 @@ pub struct LVFeedbackHeader {
 
 // Used for RTT calculation
 #[repr(C, packed)]
-#[derive(bytemuck::NoUninit, Clone, Copy, Default, Debug)]
+#[derive(Serialize, Deserialize, bytemuck::NoUninit, Clone, Copy, Default, Debug)]
 pub struct LVAck {
     // Sequence number for packet
     pub rtp_seqno: u16,
@@ -27,8 +29,10 @@ pub struct LVAck {
     pub send_ts: u128,
 }
 
-#[repr(C)]
-#[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
+#[repr(C, packed)]
+#[derive(
+    Serialize, Deserialize, bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug,
+)]
 pub struct LVFeedbackPacket {
     // In ms, a u16 limits the max time quantum if we use ms
     // but ~25s max should be fine.

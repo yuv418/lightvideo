@@ -175,6 +175,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -342,6 +351,7 @@ dependencies = [
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bytemuck",
  "bytes",
  "chrono",
@@ -1433,11 +1443,13 @@ dependencies = [
 name = "net"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bytemuck",
  "byteorder",
  "bytes",
  "log",
  "rtp",
+ "serde",
 ]
 
 [[package]]
@@ -2167,6 +2179,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bytemuck",
  "bytes",
  "cudarc",

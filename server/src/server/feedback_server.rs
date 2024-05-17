@@ -20,7 +20,7 @@ impl LVFeedbackServer {
     }
 
     fn handle_feedback(mut stream: TcpStream, bitrate_mtx: Arc<Mutex<u32>>) {
-        let mut msg_buffer = vec![0; LVFeedbackPacket::no_bytes()];
+        let mut msg_buffer = vec![0; LVFeedbackPacket::no_bytes() + 1];
         let mut bitrate = 80000;
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
@@ -38,76 +38,86 @@ impl LVFeedbackServer {
                     info!("feedback type is {}", feedback_type);
                     match feedback_type {
                         ACK_TYPE => {
-                            info!("ack type packet")
+                            debug!("ack packet to be decoded is {:?}", &msg_buffer[1..]);
                         }
                         FEEDBACK_TYPE => {
-                            let feedback_packet: &LVFeedbackPacket =
-                                bytemuck::from_bytes(&msg_buffer[1..]);
-                            debug!("Feedback packet is {:?}", feedback_packet);
+                            debug!("Feedback packet to be decoded is {:?}", &msg_buffer[1..]);
+                            match bincode::deserialize::<LVFeedbackPacket>(&msg_buffer[1..]) {
+                                Ok(feedback_packet) => {
+                                    debug!("Feedback packet is {:?}", feedback_packet);
 
-                            // Algorithm: we have the following information:
-                            // - time quantum
-                            // - total blocks
-                            // - out of order blocks
-                            // - total_packets (not using this yet)
-                            // - lost_packets (not using this yet)
-                            // - total RS decoder failures
+                                    // Algorithm: we have the following information:
+                                    // - time quantum
+                                    // - total blocks
+                                    // - out of order blocks
+                                    // - total_packets (not using this yet)
+                                    // - lost_packets (not using this yet)
+                                    // - total RS decoder failures
 
-                            // congestion = [(out of order blocks)/(total blocks)]
+                                    // congestion = [(out of order blocks)/(total blocks)]
 
-                            // bitrate =
-                            //   (bitrate + 200) if congestion > 0.2
-                            //   (bitrate) if 0.15 < congestion > 0.2 -- stable
-                            //   (bitrate * 0.5) if (congestion < 0.15) or (decoder_failures > 0)
+                                    // bitrate =
+                                    //   (bitrate + 200) if congestion > 0.2
+                                    //   (bitrate) if 0.15 < congestion > 0.2 -- stable
+                                    //   (bitrate * 0.5) if (congestion < 0.15) or (decoder_failures > 0)
 
-                            let congestion = feedback_packet.out_of_order_blocks as f32
-                                / feedback_packet.total_blocks as f32;
+                                    let congestion = feedback_packet.out_of_order_blocks as f32
+                                        / feedback_packet.total_blocks as f32;
 
-                            debug!("congestion is {}", congestion);
+                                    debug!("congestion is {}", congestion);
 
-                            {
-                                let mut bitrate_mtx_set =
-                                    bitrate_mtx.lock().expect("Failed to lock bitrate mutex");
-
-                                *bitrate_mtx_set = {
-                                    if congestion > 0.001
-                                        || feedback_packet.ecc_decoder_failures > 0
                                     {
-                                        // this multiplication is not just integer division
-                                        // in case we want to change the multiplication constant
-                                        // later
-                                        (bitrate as f32 * 0.6) as u32
-                                    } else if congestion < 0.2 && congestion > 0.15 {
-                                        bitrate
-                                    } else {
-                                        bitrate + 400000
-                                        // (bitrate as f32 - 1000) as u32
+                                        let mut bitrate_mtx_set = bitrate_mtx
+                                            .lock()
+                                            .expect("Failed to lock bitrate mutex");
+
+                                        *bitrate_mtx_set = {
+                                            if congestion > 0.001
+                                                || feedback_packet.ecc_decoder_failures > 0
+                                            {
+                                                // this multiplication is not just integer division
+                                                // in case we want to change the multiplication constant
+                                                // later
+                                                (bitrate as f32 * 0.6) as u32
+                                            } else if congestion < 0.2 && congestion > 0.15 {
+                                                bitrate
+                                            } else {
+                                                bitrate + 400000
+                                                // (bitrate as f32 - 1000) as u32
+                                            }
+                                        };
+
+                                        // bitrate changed
+                                        oo_blocks += feedback_packet.out_of_order_blocks;
+                                        decoder_failures += feedback_packet.ecc_decoder_failures;
+                                        if bitrate != *bitrate_mtx_set {
+                                            LVStatisticsCollector::update_data(
+                                                "server_bitrate_oo_blocks",
+                                                LVDataPoint::XYValue((
+                                                    bitrate as f32,
+                                                    oo_blocks as f32,
+                                                )),
+                                            );
+                                            LVStatisticsCollector::update_data(
+                                                "server_bitrate_ecc_decoder_failures",
+                                                LVDataPoint::XYValue((
+                                                    bitrate as f32,
+                                                    decoder_failures as f32,
+                                                )),
+                                            );
+                                            oo_blocks = 0;
+                                            decoder_failures = 0;
+                                        }
+
+                                        // So we don't have to lock the mutex unnecessarily
+                                        bitrate = *bitrate_mtx_set;
+
+                                        debug!("setting bitrate to {}", bitrate);
                                     }
-                                };
-
-                                // bitrate changed
-                                oo_blocks += feedback_packet.out_of_order_blocks;
-                                decoder_failures += feedback_packet.ecc_decoder_failures;
-                                if bitrate != *bitrate_mtx_set {
-                                    LVStatisticsCollector::update_data(
-                                        "server_bitrate_oo_blocks",
-                                        LVDataPoint::XYValue((bitrate as f32, oo_blocks as f32)),
-                                    );
-                                    LVStatisticsCollector::update_data(
-                                        "server_bitrate_ecc_decoder_failures",
-                                        LVDataPoint::XYValue((
-                                            bitrate as f32,
-                                            decoder_failures as f32,
-                                        )),
-                                    );
-                                    oo_blocks = 0;
-                                    decoder_failures = 0;
                                 }
-
-                                // So we don't have to lock the mutex unnecessarily
-                                bitrate = *bitrate_mtx_set;
-
-                                debug!("setting bitrate to {}", bitrate);
+                                Err(e) => {
+                                    error!("Failed to decode feedback packet with error {:?}", e)
+                                }
                             }
                         }
                         _ => {

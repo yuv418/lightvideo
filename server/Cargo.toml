@@ -63,3 +63,6 @@ net = { path = "../net" }
 
 # Feedback
 nix = { version = "0.28", features = ["ioctl"] }
+
+# Neworking serialization
+bincode = "1"

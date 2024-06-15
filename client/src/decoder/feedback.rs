@@ -60,11 +60,7 @@ pub fn start(
                             pkt.1.lost_packets = 0;
                             pkt.1.ecc_decoder_failures = 0;
 
-                            // send the ACK packet
-                            pkt.0.send_ts = SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis();
+                            // send the ACK packet, which was already populated and always gets rewriten, so we don't have to write anything.
 
                             let mut data: Vec<u8> = bincode::serialize(&pkt.0).unwrap();
                             data.insert(0, ACK_TYPE);

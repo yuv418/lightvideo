@@ -34,7 +34,15 @@ pub fn start(
                             debug!("feebdback packet is {:?}", pkt);
 
                             // Copying *rolls eyes*
+                            // NOTE: one day this will come and byte us (haha get it) because
+                            // we don't pad this and sizeof feedback is 17 but the server is always reading 19 bytes of data
+                            // because of the ACK_TYPE. we should probably pad this but it works right now and I'm lazy.
                             let mut data: Vec<u8> = bincode::serialize(&pkt.1).unwrap();
+                            debug!(
+                                "feedback packet after serialization is {:?} and len is {}",
+                                data,
+                                data.len()
+                            );
                             data.insert(0, FEEDBACK_TYPE);
 
                             match feedback_stream.write(&data) {
@@ -60,6 +68,11 @@ pub fn start(
 
                             let mut data: Vec<u8> = bincode::serialize(&pkt.0).unwrap();
                             data.insert(0, ACK_TYPE);
+                            debug!(
+                                "feedback packet after serialization is {:?} and len is {}",
+                                data,
+                                data.len()
+                            );
                             match feedback_stream.write(&data) {
                                 Ok(bytes) => debug!("wrote {} ack bytes to feedback server", bytes),
                                 Err(e) => {

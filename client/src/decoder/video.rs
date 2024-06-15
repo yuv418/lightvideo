@@ -5,22 +5,31 @@ use openh264::{
     decoder::{Decoder, DecoderConfig},
     formats::YUVSource,
 };
+use parking_lot::{Mutex, RwLock};
 use reed_solomon_simd::ReedSolomonDecoder;
 use rtp::{codecs::h264::H264Packet, packet::Packet, packetizer::Depacketizer};
 use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
 };
-use std::{collections::VecDeque, sync::Arc, thread, time::Instant};
+use std::{collections::VecDeque, os::fd::RawFd, sync::Arc, thread, time::Instant};
 use thingbuf::mpsc::blocking::Receiver;
 use webrtc_util::Unmarshal;
 
-use net::packet::{
-    LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+use net::{
+    feedback_packet::{self, LVAck, LVFeedbackPacket},
+    packet::{
+        LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+    },
 };
 
 use crate::decoder::network::LVPacketHolder;
 use crate::double_buffer::DoubleBuffer;
+
+use nix::ioctl_read_bad;
+use nix::libc::TIOCOUTQ;
+
+ioctl_read_bad!(tiocoutq, TIOCOUTQ, u32);
 
 pub struct LVDecoder {
     width: u32,
@@ -53,16 +62,36 @@ impl LVDecoder {
         }
     }
 
-    pub fn run(double_buffer: Arc<DoubleBuffer>, packet_recv: Receiver<LVPacketHolder>) {
+    pub fn run(
+        double_buffer: Arc<DoubleBuffer>,
+        packet_recv: Receiver<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
+    ) {
         thread::Builder::new()
             .name("decoder_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::decode_loop(double_buffer, packet_recv) {
+                if let Err(e) = Self::decode_loop(double_buffer, packet_recv, feedback_pkt, udp_fd)
+                {
                     error!("decode loop failed with error {:?}", e);
                 } else {
                     info!("decode receive loop exited.");
                 }
             });
+    }
+
+    pub fn bytes_in_send_queue(
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
+    ) -> Result<Option<u32>, Box<dyn std::error::Error>> {
+        // info!("udp fd set to {:?}", self.udp_fd);
+        match *udp_fd.read() {
+            Some(fd) => unsafe {
+                let mut data = 0;
+                tiocoutq(fd, &mut data)?;
+                Ok(Some(data))
+            },
+            None => Ok(None),
+        }
     }
 
     pub fn depacketize_decode(
@@ -192,6 +221,8 @@ impl LVDecoder {
     pub fn decode_loop(
         double_buffer: Arc<DoubleBuffer>,
         packet_recv: Receiver<LVPacketHolder>,
+        feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
+        udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         debug!("starting thread for decode");
 
@@ -232,6 +263,16 @@ impl LVDecoder {
         let mut rs_oorder_packets = 0;
         let mut block_id = 0;
 
+        // TODO offload the feedback to statistics module
+        let mut total_blocks = 0;
+        let mut out_of_order_blocks = 0;
+        let mut total_packets = 0;
+        let mut lost_packets = 0;
+        let mut ecc_decoder_failures = 0;
+
+        let mut average_qocc = 0;
+        let mut average_qocc_iterations = 0;
+
         // TODO what happened to re-ordering RTP packets?
         loop {
             // TODO don't copy. We slice the buffer so it only uses the part of the buffer that was written to by the socket receive.
@@ -257,8 +298,11 @@ impl LVDecoder {
             let lvheader = LVErasureInformation::from_bytes(&data_ext.payload[0..data_ext.amt]);
             let mut rtp_data = &data_ext.payload[LVErasureInformation::no_bytes()..data_ext.amt];
 
+            total_packets += 1;
+
             // new block
             if lvheader.block_id != block_id {
+                total_blocks += 1;
                 // recovery
                 if rs_total_packets < EC_RATIO_RECOVERY_PACKETS + EC_RATIO_REGULAR_PACKETS
                     && rs_total_packets - rs_recovery_packets != EC_RATIO_REGULAR_PACKETS
@@ -268,10 +312,11 @@ impl LVDecoder {
                         rs_inorder_packets, rs_total_packets, block_id
                     );
 
+                    out_of_order_blocks += 1;
                     match rs_decoder.decode() {
                         Ok(data) => {
                             for (k, mut v) in data.restored_original_iter() {
-                                debug!("RECOVERY: recovered packet {}", k);
+                                info!("RECOVERY: recovered packet {}", k);
 
                                 // TODO. this assumes that recovery occurs ON the recovery packet, which is bad.
                                 let mut slc = &v[..rs_pkt_sizes[k] as usize];
@@ -300,6 +345,7 @@ impl LVDecoder {
                             }
                         }
                         Err(e) => {
+                            ecc_decoder_failures += 1;
                             warn!("recovery failed with {:?}", e);
                         }
                     }
@@ -357,6 +403,9 @@ impl LVDecoder {
 
             if rs_oorder_packets > 0 {
                 debug!("adding packet to oorder packets");
+
+                lost_packets += lvheader.fragment_index
+                    - ((lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS);
                 lvheader_prev_fragment_index = lvheader.fragment_index as u32;
                 rs_sendq[lvheader.fragment_index as usize] = packet;
                 rs_oorder_packets += 1;
@@ -370,7 +419,10 @@ impl LVDecoder {
                     "packet out of order: current {} prev {}",
                     lvheader.fragment_index, lvheader_prev_fragment_index
                 );
+                lost_packets += lvheader.fragment_index
+                    - ((lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS);
 
+                // TODO this statistic is wrong
                 LVStatisticsCollector::update_data(
                     "client_packets_out_of_order",
                     LVDataPoint::Increment,
@@ -390,6 +442,52 @@ impl LVDecoder {
 
             lvheader_prev_fragment_index = lvheader.fragment_index as u32;
             video_dec.depacketize_decode(&packet)?;
+
+            match Self::bytes_in_send_queue(udp_fd.clone()) {
+                Ok(Some(d)) => {
+                    average_qocc += d;
+                    average_qocc_iterations += 1;
+                }
+                _ => {
+                    warn!("udp fd none or err");
+                }
+            }
+
+            match feedback_pkt.try_lock() {
+                Some(mut pkt) => {
+                    // Reset our variables
+                    let reset = pkt.1.total_packets == 0;
+
+                    debug!("total_blocks {}", total_blocks);
+                    debug!("out_of_order_blocks {}", out_of_order_blocks);
+                    debug!("total_packets {}", total_packets);
+                    debug!("lost_packets {}", lost_packets);
+                    debug!("ecc_decoder_failures {}", ecc_decoder_failures);
+
+                    pkt.1.total_blocks = total_blocks;
+                    pkt.1.out_of_order_blocks = out_of_order_blocks;
+                    pkt.1.total_packets = total_packets;
+                    pkt.1.lost_packets = lost_packets as u16;
+                    pkt.1.ecc_decoder_failures = ecc_decoder_failures;
+                    pkt.1.average_buffer_occupancy = average_qocc / average_qocc_iterations;
+
+                    if reset {
+                        total_blocks = 0;
+                        out_of_order_blocks = 0;
+                        total_packets = 0;
+                        lost_packets = 0;
+                        ecc_decoder_failures = 0;
+                        average_qocc = 0;
+                        average_qocc_iterations = 0;
+                    }
+
+                    pkt.0.rtp_seqno = packet.header.sequence_number;
+                    pkt.0.send_ts = lvheader.send_timestamp;
+                }
+                None => {
+                    warn!("Failed to lock feedback packet")
+                }
+            }
         }
     }
 }

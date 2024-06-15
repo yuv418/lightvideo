@@ -11,4 +11,7 @@ bytes = "1"
 log = "0.4"
 # laziness
 byteorder = "1.5.0"
-bytemuck = "1.15"
+bytemuck = { version = "1", features=["derive", "min_const_generics"] }
+# intense, extreme laziness, and performance problems.
+bincode = "1"
+serde = { version="1", features=["derive"] }

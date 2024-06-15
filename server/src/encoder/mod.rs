@@ -55,5 +55,5 @@ pub trait LVEncoder {
     ) -> Result<(), Box<dyn std::error::Error>>;
 
     fn bitrate(&self) -> u32;
-    fn set_bitrate(&self) -> Result<(), Box<dyn std::error::Error>>;
+    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>>;
 }

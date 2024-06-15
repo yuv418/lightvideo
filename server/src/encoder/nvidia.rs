@@ -6,14 +6,15 @@ use std::time::Instant;
 use cudarc::driver::CudaDevice;
 use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
 use image::{ImageBuffer, Rgb};
-use log::{debug, info, trace};
+use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
     NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
+    NV_ENC_RECONFIGURE_PARAMS_VER, _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
+    _NV_ENC_RECONFIGURE_PARAMS,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -32,6 +33,9 @@ pub struct LVNvidiaEncoder {
     width: u32,
     height: u32,
     frame_no: u64,
+
+    // parameters
+    enc_params: NV_ENC_INITIALIZE_PARAMS,
 
     // image conversion stuff
     src_fmt: ImageFormat,
@@ -144,7 +148,7 @@ impl LVEncoder for LVNvidiaEncoder {
         enc_params.encode_config(&mut preset_cfg.presetCfg);
 
         //
-        let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, enc_params)?;
+        let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, &mut enc_params)?;
         info!("NVIDIA encoder has been initialized");
 
         let pre_enc = Instant::now();
@@ -159,6 +163,7 @@ impl LVEncoder for LVNvidiaEncoder {
             width,
             height,
             enc_session,
+            enc_params,
             frame_no: 0,
             src_fmt,
             dst_fmt,
@@ -233,10 +238,10 @@ impl LVEncoder for LVNvidiaEncoder {
                     "server_bitstream_buffer_write",
                     LVDataPoint::TimeElapsed(pre_enc.elapsed()),
                 );
-                dbg!(bs_lock.duration());
-                dbg!(bs_lock.frame_index());
-                dbg!(bs_lock.picture_type());
-                dbg!(bs_lock.timestamp());
+                debug!("bs_lock.duration() = {:?}", bs_lock.duration());
+                debug!("bs_lock.frame_index() = {:?}", bs_lock.frame_index());
+                debug!("bs_lock.picture_type() = {:?}", bs_lock.picture_type());
+                debug!("bs_lock.timestamp() = {:?}", bs_lock.timestamp());
 
                 trace!("h264_buffer is {:?}", h264_buffer.get_ref().len());
                 self.frame_no += 1;
@@ -269,7 +274,35 @@ impl LVEncoder for LVNvidiaEncoder {
         Ok(())
     }
     fn bitrate(&self) -> u32 {
-        self.enc_session
+        unsafe { *self.enc_params.encodeConfig }
+            .rcParams
+            .averageBitRate
     }
-    fn set_bitrate(&self) -> Result<(), Box<dyn std::error::Error>> {}
+    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        unsafe {
+            (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
+        }
+
+        debug!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
+
+        let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
+            version: NV_ENC_RECONFIGURE_PARAMS_VER,
+            reInitEncodeParams: self.enc_params,
+            ..Default::default()
+        };
+
+        reconfigure_params.set_resetEncoder(1);
+        reconfigure_params.set_forceIDR(1);
+
+        match self
+            .enc_session
+            .get_encoder()
+            .reconfigure_encoder(reconfigure_params)
+        {
+            Ok(k) => debug!("finished reconfiguring encoder!"),
+            Err(e) => error!("failed to set bitrate {:?}", e),
+        }
+
+        Ok(())
+    }
 }

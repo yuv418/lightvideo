@@ -23,7 +23,7 @@ impl LVStatisticsCollector {
     pub fn start() -> Receiver<bool> {
         let (quit_tx, quit_rx) = flume::bounded::<bool>(1);
 
-        let t = thread::Builder::new()
+        thread::Builder::new()
             .name("statistics_thread".to_string())
             .spawn(move || {
                 let mut stat = LVStatistics::new();

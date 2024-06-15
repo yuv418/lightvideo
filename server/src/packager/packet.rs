@@ -10,7 +10,12 @@ use lazy_static::lazy_static;
 use log::{debug, trace};
 use reed_solomon_simd::ReedSolomonEncoder;
 use rtp::packet::Packet;
-use std::{net::UdpSocket, ops::Index, slice::SliceIndex, time::SystemTime};
+use std::{
+    net::UdpSocket,
+    ops::Index,
+    slice::SliceIndex,
+    time::{SystemTime, UNIX_EPOCH},
+};
 use webrtc_util::{Marshal, MarshalSize};
 
 use net::packet::{
@@ -64,6 +69,10 @@ impl LVErasureManager {
             min_fragment_size: EC_RATIO_REGULAR_PACKETS,
             recovery_pkt: false,
             pkt_sizes: [0; EC_RATIO_REGULAR_PACKETS as usize],
+            send_timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_millis(),
         };
 
         trace!("lv erasure information {:?}", pk);
@@ -84,6 +93,10 @@ impl LVErasureManager {
                     min_fragment_size: EC_RATIO_REGULAR_PACKETS,
                     recovery_pkt: true,
                     pkt_sizes: self.pkt_sizes,
+                    send_timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis(),
                 };
 
                 debug!("recovery header is {:?}", recovery_header);

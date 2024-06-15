@@ -1,0 +1,1 @@
+- One-way latency is hard to calculate because the timestamp on the host/guest may not be syncrhonized.

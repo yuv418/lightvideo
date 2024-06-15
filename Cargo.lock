@@ -175,6 +175,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "bincode"
+version = "1.3.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1f45e9417d87227c7a56d22e471c6206462cba514c7590c09aff4cf6d1ddcad"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "bit-set"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -342,13 +351,16 @@ dependencies = [
 name = "client"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bytemuck",
  "bytes",
+ "chrono",
  "dcv-color-primitives",
  "flexi_logger",
  "flume",
  "log",
  "net",
+ "nix 0.28.0",
  "openh264",
  "openh264-sys2",
  "parking_lot 0.12.1",
@@ -359,6 +371,7 @@ dependencies = [
  "socket2",
  "statistics",
  "thingbuf",
+ "timer",
  "webrtc-util",
  "wgpu",
  "winit",
@@ -1190,9 +1203,9 @@ checksum = "03087c2bad5e1034e8cace5926dec053fb3790248370865f5117a7d0213354c8"
 
 [[package]]
 name = "libc"
-version = "0.2.149"
+version = "0.2.153"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a08173bc88b7955d1b3145aa561539096c421ac8debde8cbc3612ec635fee29b"
+checksum = "9c198f91728a82281a64e1f4f9eeb25d82cb32a5de251c6bd1b5154d63a8e7bd"
 
 [[package]]
 name = "libdbus-sys"
@@ -1430,11 +1443,13 @@ dependencies = [
 name = "net"
 version = "0.1.0"
 dependencies = [
+ "bincode",
  "bytemuck",
  "byteorder",
  "bytes",
  "log",
  "rtp",
+ "serde",
 ]
 
 [[package]]
@@ -1458,6 +1473,18 @@ checksum = "2eb04e9c688eff1c89d72b407f168cf79bb9e867a9d3323ed6c01519eb9cc053"
 dependencies = [
  "bitflags 2.4.1",
  "cfg-if",
+ "libc",
+]
+
+[[package]]
+name = "nix"
+version = "0.28.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab2156c4fce2f8df6c499cc1c763e4394b7482525bf2a9701c9d79d215f519e4"
+dependencies = [
+ "bitflags 2.4.1",
+ "cfg-if",
+ "cfg_aliases",
  "libc",
 ]
 
@@ -2152,6 +2179,7 @@ name = "server"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bytemuck",
  "bytes",
  "cudarc",
@@ -2163,6 +2191,7 @@ dependencies = [
  "libc",
  "log",
  "net",
+ "nix 0.28.0",
  "nvidia-video-codec-sdk",
  "openh264",
  "openh264-sys2",
@@ -2422,6 +2451,15 @@ dependencies = [
  "flate2",
  "jpeg-decoder",
  "weezl",
+]
+
+[[package]]
+name = "timer"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "31d42176308937165701f50638db1c31586f183f1aab416268216577aec7306b"
+dependencies = [
+ "chrono",
 ]
 
 [[package]]

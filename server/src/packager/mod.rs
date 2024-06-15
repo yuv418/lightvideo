@@ -160,6 +160,10 @@ impl LVPackager {
         !self.rtp_queue.is_empty()
     }
 
+    pub fn update_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        self.encoder.set_bitrate(new_bitrate)
+    }
+
     // pub fn encrypt();
     // pub fn error_correct();
 }

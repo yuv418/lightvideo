@@ -112,7 +112,13 @@ impl LVFeedbackServer {
                                                 // this multiplication is not just integer division
                                                 // in case we want to change the multiplication constant
                                                 // later
-                                                (bitrate as f32 * 0.6) as u32
+
+                                                // Minimum bitrate
+                                                if bitrate >= 20000 {
+                                                    (bitrate as f32 * 0.6) as u32
+                                                } else {
+                                                    20000
+                                                }
                                             } else if congestion < 0.2 && congestion > 0.15 {
                                                 bitrate
                                             } else {

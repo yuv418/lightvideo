@@ -155,7 +155,7 @@ impl LVFeedbackServer {
                             }
                         }
                         _ => {
-                            error!("unknown feedback packet type!")
+                            error!("unknown feedback packet type! type was {}!", feedback_type)
                         }
                     }
                 }

@@ -18,7 +18,7 @@ mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str(
-        "trace,statistics=info,server::server::streaming_server=info, server::packager=info, server::capture=info, server::encoder=info, net=info",
+        "trace,server::server::feedback_server=info,statistics=info,server::server::streaming_server=info, server::packager=info, server::capture=info, server::encoder=info, net=info",
     )?
     .start()?;
     let quit_rx = LVStatisticsCollector::start();
@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 feedback_addr.set_port(feedback_addr.port() + 2);
                 let feedback_server = LVFeedbackServer::new(&feedback_addr.to_string());
 
-                let mut input_addr: SocketAddr = feedback_addr.clone();
+                let mut input_addr: SocketAddr = addr.parse()?;
                 let mut input_target_addr: SocketAddr = target_addr.parse()?;
                 input_target_addr.set_port(input_target_addr.port() + 3);
-                input_addr.set_port(feedback_addr.port() + 1);
+                input_addr.set_port(input_addr.port() + 3);
 
                 let input_server = LVInputServer::new(&input_addr.to_string());
                 let input_emulator = Box::new(LVX11InputEmulator::new()?);
@@ -55,9 +55,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     bitrate_mtx,
                 )?;
 
-                streaming_server.begin()?;
-
                 input_server.start_receive_loop(input_target_addr, input_emulator);
+                streaming_server.begin()?;
 
                 Ok(())
             }

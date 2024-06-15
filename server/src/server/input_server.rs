@@ -1,10 +1,14 @@
 use std::{
+    mem::size_of,
     net::{SocketAddr, UdpSocket},
     thread,
 };
 
 use log::{debug, error, info};
-use net::input::{input_packet_size, LVInputEvent, LVInputEventType};
+use net::input::{
+    input_packet_size, LVInputEvent, LVInputEventType, LVKeyboardEvent, LVMouseClickEvent,
+    LVMouseMoveEvent, LVMouseWheelEvent,
+};
 
 use crate::input::LVInputEmulator;
 
@@ -24,6 +28,8 @@ impl LVInputServer {
         input_target_addr: SocketAddr,
         mut input_emulator: Box<dyn LVInputEmulator>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        debug!("bind address is {:?}", self.bind_addr);
+        debug!("input target address is {:?}", input_target_addr);
         let socket = UdpSocket::bind(&self.bind_addr).expect("Failed to make socket");
 
         // How do we guarantee this gets to the other side?
@@ -37,6 +43,7 @@ impl LVInputServer {
         // The server pads the input data
         thread::spawn(move || {
             let mut buf = vec![0; input_packet_size()];
+            let max_align = net::input::max_align();
             loop {
                 // By using the packet push, we avoid allocating on the heap every iteration.
                 match socket.recv_from(&mut buf) {
@@ -47,22 +54,33 @@ impl LVInputServer {
                         match LVInputEventType::try_from(buf[0]) {
                             Ok(input_variant) => {
                                 let input_event = match input_variant {
-                                    LVInputEventType::KeyboardEvent => LVInputEvent::KeyboardEvent(
-                                        *bytemuck::from_bytes(&buf[1..]),
-                                    ),
+                                    LVInputEventType::KeyboardEvent => {
+                                        LVInputEvent::KeyboardEvent(*bytemuck::from_bytes(
+                                            &buf[max_align
+                                                ..size_of::<LVKeyboardEvent>() + max_align],
+                                        ))
+                                    }
                                     LVInputEventType::MouseClickEvent => {
                                         LVInputEvent::MouseClickEvent(*bytemuck::from_bytes(
-                                            &buf[1..],
+                                            &buf[max_align
+                                                ..size_of::<LVMouseClickEvent>() + max_align],
                                         ))
                                     }
                                     LVInputEventType::MouseWheelEvent => {
                                         LVInputEvent::MouseWheelEvent(*bytemuck::from_bytes(
-                                            &buf[1..],
+                                            &buf[max_align
+                                                ..size_of::<LVMouseWheelEvent>() + max_align],
                                         ))
                                     }
                                     LVInputEventType::MouseMoveEvent => {
+                                        debug!(
+                                            "Mouse move event data is {:?}",
+                                            &buf[max_align
+                                                ..size_of::<LVMouseMoveEvent>() + max_align]
+                                        );
                                         LVInputEvent::MouseMoveEvent(*bytemuck::from_bytes(
-                                            &buf[1..],
+                                            &buf[max_align
+                                                ..size_of::<LVMouseMoveEvent>() + max_align],
                                         ))
                                     }
                                 };

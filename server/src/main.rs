@@ -18,7 +18,7 @@ mod server;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     Logger::try_with_str(
-        "trace,server::server::feedback_server=info,statistics=info,server::server::streaming_server=info, server::packager=info, server::capture=info, server::encoder=info, net=info",
+        "trace,server::input=info,server::server::feedback_server=debug,statistics=info,server::server::streaming_server=info, server::server::input_server=info, server::packager=info, server::capture=info, server::encoder=info, net=info",
     )?
     .start()?;
     let quit_rx = LVStatisticsCollector::start();

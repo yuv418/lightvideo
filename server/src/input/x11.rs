@@ -1,3 +1,5 @@
+use log::error;
+
 use super::LVInputEmulator;
 use anyhow::anyhow;
 use log::{debug, info, warn};
@@ -49,14 +51,26 @@ impl LVInputEmulator for LVX11InputEmulator {
                     }
                 };
 
+                debug!("keycode is {:?}", kb_ev.get_key_code());
+                debug!("scancode is {:?}", kb_ev.get_key_code().to_scancode());
+                // For whatever (legacy) reasons the input is offset by 8
                 self.fake_input.detail = kb_ev
                     .get_key_code()
                     .to_scancode()
                     .ok_or_else(|| anyhow!("Could not convert keycode to scancode."))?
-                    .try_into()?
+                    .try_into()?;
+                self.fake_input.detail += 8;
             }
             LVInputEvent::MouseClickEvent(click_ev) => {
                 // left is 1, middle 2, right 3, guessing back is 8, forward is 9
+                self.fake_input.r#type = match click_ev.get_element_state() {
+                    Some(ElementState::Pressed) => x11::xlib::ButtonPress as u8,
+                    Some(ElementState::Released) => x11::xlib::ButtonRelease as u8,
+                    None => {
+                        warn!("got invalid element state None");
+                        return Err(anyhow!("Other mouse button received"));
+                    }
+                };
                 self.fake_input.detail = match click_ev.get_button() {
                     Some(MouseButton::Left) => 1,
                     Some(MouseButton::Right) => 2,
@@ -73,8 +87,9 @@ impl LVInputEmulator for LVX11InputEmulator {
                 unimplemented!()
             }
             LVInputEvent::MouseMoveEvent(move_ev) => {
-                // Set to true makes it absolute
-                self.fake_input.detail = 1;
+                self.fake_input.r#type = x11::xlib::MotionNotify as u8;
+                // Set to false (0) makes it absolute
+                self.fake_input.detail = 0;
                 self.fake_input.root_x = move_ev.x as i16;
                 self.fake_input.root_y = move_ev.y as i16;
             }
@@ -82,8 +97,14 @@ impl LVInputEmulator for LVX11InputEmulator {
 
         self.fake_input.time = x11::xlib::CurrentTime as u32;
 
+        debug!("x11 fake_input is {:?}", self.fake_input);
+
         // We don't bother checking this request. Maybe we should.
-        let _ = self.conn.send_request(&(self.fake_input));
+        let cookie = self.conn.send_request_checked(&(self.fake_input));
+        match self.conn.check_request(cookie) {
+            Ok(a) => debug!("sending request worked with {:?}", a),
+            Err(e) => error!("xtest failed with {:?}", e),
+        }
 
         Ok(())
     }

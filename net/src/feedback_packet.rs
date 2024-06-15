@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use serde::{Deserialize, Serialize};
 
 pub const ACK_TYPE: u8 = 0;
@@ -27,6 +29,12 @@ pub struct LVAck {
     pub rtp_seqno: u16,
     // Time
     pub send_ts: u128,
+}
+
+impl LVAck {
+    pub fn no_bytes() -> usize {
+        size_of::<u128>() + size_of::<u16>()
+    }
 }
 
 #[repr(C, packed)]

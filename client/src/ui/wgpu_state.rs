@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use log::{debug, info};
+use net::input::{LVInputEvent, LVKeyboardEvent, LVMouseClickEvent, LVMouseMoveEvent};
 use wgpu::util::DeviceExt;
 use winit::{event::WindowEvent, window::Window};
 
@@ -26,6 +27,7 @@ pub struct WGPUState {
     num_indices: u32,
 
     double_buffer: Arc<DoubleBuffer>,
+    input_send: flume::Sender<LVInputEvent>,
 }
 
 #[repr(C)]
@@ -85,7 +87,11 @@ const INDICES: &[u16] = &[
 ];
 
 impl WGPUState {
-    pub async fn new(window: Window, double_buffer: Arc<DoubleBuffer>) -> Self {
+    pub async fn new(
+        window: Window,
+        double_buffer: Arc<DoubleBuffer>,
+        input_send: flume::Sender<LVInputEvent>,
+    ) -> Self {
         let size = window.inner_size();
 
         let num_vertices = VERTICES.len() as u32;
@@ -174,6 +180,7 @@ impl WGPUState {
             texture_size,
             diffuse_texture,
             diffuse_bind_group,
+            input_send,
         }
     }
     pub fn window(&self) -> &Window {
@@ -191,16 +198,34 @@ impl WGPUState {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 debug!("cursor moved to position {:?}", position);
-            },
+                self.input_send
+                    .send(LVInputEvent::MouseMoveEvent(LVMouseMoveEvent {
+                        x: position.x,
+                        y: position.y,
+                    }));
+            }
             WindowEvent::MouseInput { button, .. } => {
                 debug!("mouse clicked {:?}", button);
-
-            },
-            WindowEvent::KeyboardInput { event, .. } => {
-                let phy_key = event.physical_key;
-                let state = event.state;
-                debug!("keyboard pressed physical key {:?}, type of press {:?}", phy_key, state);
+                self.input_send
+                    .send(LVInputEvent::MouseClickEvent(LVMouseClickEvent::new(
+                        *button,
+                    )));
             }
+            WindowEvent::KeyboardInput { event, .. } => match event.physical_key {
+                winit::keyboard::PhysicalKey::Code(key_code) => {
+                    let state = event.state;
+                    debug!(
+                        "keyboard pressed physical key {:?}, type of press {:?}",
+                        key_code, state
+                    );
+                    self.input_send
+                        .send(LVInputEvent::KeyboardEvent(LVKeyboardEvent::new(
+                            key_code, state,
+                        )));
+                }
+                winit::keyboard::PhysicalKey::Unidentified(_) => {}
+            },
+            // We aren't going to do anything with this for now.
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 debug!("mouse wheel moved: delta {:?} and phase {:?}", delta, phase);
             }

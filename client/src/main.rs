@@ -48,12 +48,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let receiver = LVNetwork::new(&addr)?;
 
-            receiver.run(pkt_push, inp_recv, feedback_pkt.clone(), udp_fd.clone());
+            receiver.run(pkt_push, inp_recv, feedback_pkt.clone(), udp_fd.clone())?;
             LVDecoder::run(db, pkt_recv, feedback_pkt.clone(), udp_fd);
 
             // Start ui
             let ui = VideoUI::new(quit_rx)?;
-            ui.run(db_ui).block_on()?;
+            ui.run(db_ui, inp_push).block_on()?;
         }
         None => println!("Usage: ./client addr"),
     }

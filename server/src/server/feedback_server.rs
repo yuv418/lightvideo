@@ -40,10 +40,10 @@ impl LVFeedbackServer {
             match stream.read(&mut msg_buffer[..]) {
                 Ok(data_read) => {
                     let feedback_type = msg_buffer[0];
-                    info!("feedback type is {}", feedback_type);
+                    debug!("feedback type is {}", feedback_type);
                     match feedback_type {
                         ACK_TYPE => {
-                            info!(
+                            debug!(
                                 "ack packet to be decoded is {:?}",
                                 &msg_buffer[1..(LVAck::no_bytes() + 1)]
                             );
@@ -56,7 +56,7 @@ impl LVFeedbackServer {
                                 .unwrap()
                                 .as_millis();
                             let rtt = current_time - ack.send_ts;
-                            info!("rtt was {}", rtt);
+                            debug!("rtt was {}", rtt);
 
                             // NOTE: We hope that the u128 when they are subtracted will fit within an f32.
                             LVStatisticsCollector::update_data(
@@ -67,7 +67,7 @@ impl LVFeedbackServer {
                                 "server_rtt_bitrate",
                                 LVDataPoint::XYValue((bitrate as f32, rtt as f32)),
                             );
-                            info!("ack packet is {:?}", ack);
+                            debug!("ack packet is {:?}", ack);
                         }
                         FEEDBACK_TYPE => {
                             debug!(
@@ -168,10 +168,10 @@ impl LVFeedbackServer {
         bind_addr: &str,
         bitrate_shared: Arc<Mutex<u32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        info!("connecting to feedback server at {}", bind_addr);
+        debug!("connecting to feedback server at {}", bind_addr);
         let tcp_stream = TcpStream::connect(bind_addr)?;
 
-        info!("connected to feedback server at {}", bind_addr);
+        debug!("connected to feedback server at {}", bind_addr);
 
         Self::handle_feedback(tcp_stream, bitrate_shared.clone());
 
@@ -179,7 +179,7 @@ impl LVFeedbackServer {
     }
 
     pub fn begin(&self) -> Arc<Mutex<u32>> {
-        info!("Starting feedback server");
+        debug!("Starting feedback server");
         let bitrate_shared = Arc::new(Mutex::new(80000));
         let bitrate_shared_clone = bitrate_shared.clone();
         let bind_addr_clone = self.bind_addr.clone();

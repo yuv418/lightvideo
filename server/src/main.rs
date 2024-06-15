@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     bitrate_mtx,
                 )?;
 
-                streaming_server.begin();
+                streaming_server.begin()?;
 
                 Ok(())
             }

@@ -27,7 +27,7 @@ pub enum LVInputEventType {
 }
 
 pub fn input_packet_size() -> usize {
-    // The input packet is 1 (for the variant) plus the size of the largest structure.
+    // The input packet is 1 (for the variant and struct padding) plus the size of the largest structure.
     // Smaller structures are padded.
     [
         size_of::<LVKeyboardEvent>(),
@@ -39,7 +39,7 @@ pub fn input_packet_size() -> usize {
     .iter()
     .max()
     .unwrap()
-        + 1
+        + 4
 }
 
 // Right now, these u8s corresond to the KeyCode and ElementState enums in winit respectively.

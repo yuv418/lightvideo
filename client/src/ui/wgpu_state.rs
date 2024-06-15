@@ -198,16 +198,16 @@ impl WGPUState {
         match event {
             WindowEvent::CursorMoved { position, .. } => {
                 debug!("cursor moved to position {:?}", position);
-                self.input_send
-                    .send(LVInputEvent::MouseMoveEvent(LVMouseMoveEvent {
+                let _ = self.input_send
+                    .try_send(LVInputEvent::MouseMoveEvent(LVMouseMoveEvent {
                         x: position.x,
                         y: position.y,
                     }));
             }
             WindowEvent::MouseInput { button, .. } => {
                 debug!("mouse clicked {:?}", button);
-                self.input_send
-                    .send(LVInputEvent::MouseClickEvent(LVMouseClickEvent::new(
+                let _ = self.input_send
+                    .try_send(LVInputEvent::MouseClickEvent(LVMouseClickEvent::new(
                         *button,
                     )));
             }
@@ -218,8 +218,8 @@ impl WGPUState {
                         "keyboard pressed physical key {:?}, type of press {:?}",
                         key_code, state
                     );
-                    self.input_send
-                        .send(LVInputEvent::KeyboardEvent(LVKeyboardEvent::new(
+                    let _ = self.input_send
+                        .try_send(LVInputEvent::KeyboardEvent(LVKeyboardEvent::new(
                             key_code, state,
                         )));
                 }

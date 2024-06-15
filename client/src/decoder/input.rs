@@ -29,19 +29,21 @@ pub fn start(
                             debug!("sending event {:?}", ev);
                             inp_buffer[0] = match ev {
                                 LVInputEvent::KeyboardEvent(ke) => {
-                                    inp_buffer[1..].copy_from_slice(bytemuck::bytes_of(&ke));
+                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&ke));
                                     LVInputEventType::KeyboardEvent
                                 }
                                 LVInputEvent::MouseClickEvent(mce) => {
-                                    inp_buffer[1..].copy_from_slice(bytemuck::bytes_of(&mce));
+                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&mce));
                                     LVInputEventType::MouseClickEvent
                                 }
                                 LVInputEvent::MouseWheelEvent(mwe) => {
-                                    inp_buffer[1..].copy_from_slice(bytemuck::bytes_of(&mwe));
+                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&mwe));
                                     LVInputEventType::MouseWheelEvent
                                 }
                                 LVInputEvent::MouseMoveEvent(mme) => {
-                                    inp_buffer[1..].copy_from_slice(bytemuck::bytes_of(&mme));
+                                    let dat = bytemuck::bytes_of(&mme);
+                                    debug!("mouse move data is {:?}", dat);
+                                    inp_buffer[4..].copy_from_slice(dat);
                                     LVInputEventType::MouseMoveEvent
                                 }
                             } as u8;

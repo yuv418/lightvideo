@@ -1,4 +1,4 @@
-use std::mem::size_of;
+use std::mem::{align_of, size_of};
 
 use int_enum::IntEnum;
 pub use winit::{
@@ -26,6 +26,19 @@ pub enum LVInputEventType {
     MouseMoveEvent = 3,
 }
 
+pub fn max_align() -> usize {
+    *[
+        align_of::<LVKeyboardEvent>(),
+        align_of::<LVKeyboardEvent>(),
+        align_of::<LVMouseClickEvent>(),
+        align_of::<LVMouseWheelEvent>(),
+        align_of::<LVMouseMoveEvent>(),
+    ]
+    .iter()
+    .max()
+    .unwrap()
+}
+
 pub fn input_packet_size() -> usize {
     // The input packet is 1 (for the variant and struct padding) plus the size of the largest structure.
     // Smaller structures are padded.
@@ -39,7 +52,8 @@ pub fn input_packet_size() -> usize {
     .iter()
     .max()
     .unwrap()
-        + 4
+        // The 1 byte is included in here.
+        + max_align()
 }
 
 // Right now, these u8s corresond to the KeyCode and ElementState enums in winit respectively.

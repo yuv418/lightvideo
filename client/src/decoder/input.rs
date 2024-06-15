@@ -1,12 +1,13 @@
 // TODO: we need to move some of this to a different directory
 
 use std::{
+    mem::align_of,
     net::{SocketAddrV4, UdpSocket},
     thread,
 };
 
 use log::{debug, error};
-use net::input::{input_packet_size, LVInputEvent, LVInputEventType};
+use net::input::{input_packet_size, LVInputEvent, LVInputEventType, LVMouseMoveEvent};
 
 pub fn start(
     bind_addr: SocketAddrV4,
@@ -18,6 +19,7 @@ pub fn start(
     thread::spawn(move || {
         // DIY buffered reader that doesn't write too much.
         let mut inp_buffer = vec![0; input_packet_size()];
+        let max_align = net::input::max_align();
         debug!("input: waiting for ping from server on {:?}", bind_addr);
         match input_sock.recv_from(&mut inp_buffer[..]) {
             Ok((_, send_addr)) => {
@@ -29,21 +31,28 @@ pub fn start(
                             debug!("sending event {:?}", ev);
                             inp_buffer[0] = match ev {
                                 LVInputEvent::KeyboardEvent(ke) => {
-                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&ke));
+                                    inp_buffer[max_align..]
+                                        .copy_from_slice(bytemuck::bytes_of(&ke));
                                     LVInputEventType::KeyboardEvent
                                 }
                                 LVInputEvent::MouseClickEvent(mce) => {
-                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&mce));
+                                    inp_buffer[max_align..]
+                                        .copy_from_slice(bytemuck::bytes_of(&mce));
                                     LVInputEventType::MouseClickEvent
                                 }
                                 LVInputEvent::MouseWheelEvent(mwe) => {
-                                    inp_buffer[4..].copy_from_slice(bytemuck::bytes_of(&mwe));
+                                    inp_buffer[max_align..]
+                                        .copy_from_slice(bytemuck::bytes_of(&mwe));
                                     LVInputEventType::MouseWheelEvent
                                 }
                                 LVInputEvent::MouseMoveEvent(mme) => {
                                     let dat = bytemuck::bytes_of(&mme);
                                     debug!("mouse move data is {:?}", dat);
-                                    inp_buffer[4..].copy_from_slice(dat);
+                                    debug!(
+                                        "mouse move alignment is {}",
+                                        align_of::<LVMouseMoveEvent>()
+                                    );
+                                    inp_buffer[max_align..].copy_from_slice(dat);
                                     LVInputEventType::MouseMoveEvent
                                 }
                             } as u8;

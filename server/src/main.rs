@@ -8,6 +8,7 @@ use statistics::collector::LVStatisticsCollector;
 mod benchmark;
 mod capture;
 mod encoder;
+mod input;
 mod packager;
 mod server;
 

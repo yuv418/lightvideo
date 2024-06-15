@@ -15,7 +15,7 @@ nvidia-hwenc = ["cudarc", "nvidia-video-codec-sdk"]
 
 [dependencies]
 # Capture
-xcb = { version = "1", features = ["shm"] }
+xcb = { version = "1", features = ["shm", "xtest"] }
 libc = "0.2"
 # Follow semver!!
 screenshots = "=0.8.4"
@@ -66,3 +66,7 @@ nix = { version = "0.28", features = ["ioctl"] }
 
 # Neworking serialization
 bincode = "1"
+
+# Input
+x11 = { version = "2" }
+winit = {version ="0.29", features = ["rwh_05"]}

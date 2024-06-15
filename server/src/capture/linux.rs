@@ -22,6 +22,7 @@ pub struct LVLinuxCapturer {
 }
 
 impl LVLinuxCapturer {
+    // TODO: there's probably a memory leak here.
     pub fn new(screen: Screen) -> Result<Self, Box<dyn std::error::Error>> {
         let (conn, index) =
             xcb::Connection::connect_with_extensions(None, &[xcb::Extension::Shm], &[])?;

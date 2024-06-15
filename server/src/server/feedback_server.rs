@@ -2,6 +2,7 @@ use std::io::prelude::*;
 use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use log::{debug, error, info};
 use net::feedback_packet::{LVAck, LVFeedbackPacket, ACK_TYPE, FEEDBACK_TYPE};
@@ -28,6 +29,7 @@ impl LVFeedbackServer {
         let mut decoder_failures = 0;
 
         LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
+        LVStatisticsCollector::register_data("server_ack_time", LVDataType::XYData);
         LVStatisticsCollector::register_data(
             "server_bitrate_ecc_decoder_failures",
             LVDataType::XYData,
@@ -46,6 +48,20 @@ impl LVFeedbackServer {
                             );
                             let ack: LVAck =
                                 bincode::deserialize::<LVAck>(&msg_buffer[1..]).unwrap();
+
+                            // 1. Calculate RTT
+                            let current_time = SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis();
+                            let rtt = current_time - ack.send_ts;
+                            info!("rtt was {}", rtt);
+
+                            // NOTE: We hope that the u128 when they are subtracted will fit within an f32.
+                            LVStatisticsCollector::update_data(
+                                "server_ack_time",
+                                LVDataPoint::XYValue((ack.rtp_seqno as f32, rtt as f32)),
+                            );
                             info!("ack packet is {:?}", ack);
                         }
                         FEEDBACK_TYPE => {

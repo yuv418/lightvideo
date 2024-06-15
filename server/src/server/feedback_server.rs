@@ -4,7 +4,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use log::{debug, error, info};
-use net::feedback_packet::{LVFeedbackPacket, ACK_TYPE, FEEDBACK_TYPE};
+use net::feedback_packet::{LVAck, LVFeedbackPacket, ACK_TYPE, FEEDBACK_TYPE};
 use statistics::collector::LVStatisticsCollector;
 use statistics::statistics::{LVDataPoint, LVDataType};
 
@@ -20,7 +20,9 @@ impl LVFeedbackServer {
     }
 
     fn handle_feedback(mut stream: TcpStream, bitrate_mtx: Arc<Mutex<u32>>) {
-        let mut msg_buffer = vec![0; LVFeedbackPacket::no_bytes() + 1];
+        // The +1 should be for the extra byte that tells us what type of packet this is.
+        let mut msg_buffer =
+            vec![0; std::cmp::max(LVFeedbackPacket::no_bytes(), LVAck::no_bytes()) + 1];
         let mut bitrate = 80000;
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
@@ -38,11 +40,22 @@ impl LVFeedbackServer {
                     info!("feedback type is {}", feedback_type);
                     match feedback_type {
                         ACK_TYPE => {
-                            debug!("ack packet to be decoded is {:?}", &msg_buffer[1..]);
+                            info!(
+                                "ack packet to be decoded is {:?}",
+                                &msg_buffer[1..(LVAck::no_bytes() + 1)]
+                            );
+                            let ack: LVAck =
+                                bincode::deserialize::<LVAck>(&msg_buffer[1..]).unwrap();
+                            info!("ack packet is {:?}", ack);
                         }
                         FEEDBACK_TYPE => {
-                            debug!("Feedback packet to be decoded is {:?}", &msg_buffer[1..]);
-                            match bincode::deserialize::<LVFeedbackPacket>(&msg_buffer[1..]) {
+                            debug!(
+                                "Feedback packet to be decoded is {:?}",
+                                &msg_buffer[1..LVFeedbackPacket::no_bytes() + 1]
+                            );
+                            match bincode::deserialize::<LVFeedbackPacket>(
+                                &msg_buffer[1..LVFeedbackPacket::no_bytes() + 1],
+                            ) {
                                 Ok(feedback_packet) => {
                                     debug!("Feedback packet is {:?}", feedback_packet);
 

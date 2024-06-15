@@ -188,6 +188,28 @@ impl WGPUState {
         }
     }
     pub fn input(&mut self, event: &WindowEvent) -> bool {
+        match event {
+            WindowEvent::CursorMoved { position, .. } => {
+                debug!("cursor moved to position {:?}", position);
+            },
+            WindowEvent::MouseInput { button, .. } => {
+                debug!("mouse clicked {:?}", button);
+
+            },
+            WindowEvent::KeyboardInput { event, .. } => {
+                let phy_key = event.physical_key;
+                let state = event.state;
+                debug!("keyboard pressed physical key {:?}, type of press {:?}", phy_key, state);
+            }
+            WindowEvent::MouseWheel { delta, phase, .. } => {
+                debug!("mouse wheel moved: delta {:?} and phase {:?}", delta, phase);
+            }
+            // Ignore this case, it spams the log
+            WindowEvent::RedrawRequested => {}
+            _ => {
+                debug!("wgpu window: other event is {:?}", event);
+            }
+        }
         false
     }
     pub fn update(&mut self) -> Result<(), wgpu::SurfaceError> {

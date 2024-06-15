@@ -107,12 +107,12 @@ impl LVNetwork {
         feedback::start(&feedback_addr.to_string(), feedback_pkt.clone())?;
 
         // Input setup
-        let mut input_bind_addr = feedback_addr;
+        let mut input_bind_addr = feedback_addr.clone();
         input_bind_addr.set_port(input_bind_addr.port() + 1);
 
         debug!("initializing input server to {:?}", input_bind_addr);
 
-        input::start(input_bind_addr, inp_recv);
+        input::start(input_bind_addr, inp_recv)?;
 
         loop {
             // By using the packet push, we avoid allocating on the heap every iteration.

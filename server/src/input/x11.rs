@@ -1,6 +1,6 @@
 use super::LVInputEmulator;
 use anyhow::anyhow;
-use log::{debug, info};
+use log::{debug, info, warn};
 use net::input::{ElementState, LVInputEvent, MouseButton};
 use winit::platform::scancode::PhysicalKeyExtScancode;
 use xcb::{xtest::FakeInput, Connection};
@@ -41,8 +41,12 @@ impl LVInputEmulator for LVX11InputEmulator {
         match ev {
             LVInputEvent::KeyboardEvent(kb_ev) => {
                 self.fake_input.r#type = match kb_ev.get_element_state() {
-                    ElementState::Pressed => x11::xlib::KeyPress as u8,
-                    ElementState::Released => x11::xlib::KeyRelease as u8,
+                    Some(ElementState::Pressed) => x11::xlib::KeyPress as u8,
+                    Some(ElementState::Released) => x11::xlib::KeyRelease as u8,
+                    None => {
+                        warn!("got invalid element state None");
+                        return Err(anyhow!("Other mouse button received"));
+                    }
                 };
 
                 self.fake_input.detail = kb_ev
@@ -54,13 +58,13 @@ impl LVInputEmulator for LVX11InputEmulator {
             LVInputEvent::MouseClickEvent(click_ev) => {
                 // left is 1, middle 2, right 3, guessing back is 8, forward is 9
                 self.fake_input.detail = match click_ev.get_button() {
-                    MouseButton::Left => 1,
-                    MouseButton::Right => 2,
-                    MouseButton::Middle => 3,
-                    MouseButton::Back => 8,
-                    MouseButton::Forward => 9,
+                    Some(MouseButton::Left) => 1,
+                    Some(MouseButton::Right) => 2,
+                    Some(MouseButton::Middle) => 3,
+                    Some(MouseButton::Back) => 8,
+                    Some(MouseButton::Forward) => 9,
                     _ => {
-                        info!("received other mouse button");
+                        warn!("received other mouse button");
                         return Err(anyhow!("Other mouse button received"));
                     }
                 }

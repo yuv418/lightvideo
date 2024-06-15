@@ -18,7 +18,7 @@ pub fn start(
     thread::spawn(move || {
         // DIY buffered reader that doesn't write too much.
         let mut inp_buffer = vec![0; input_packet_size()];
-        debug!("input: waiting for ping from server");
+        debug!("input: waiting for ping from server on {:?}", bind_addr);
         match input_sock.recv_from(&mut inp_buffer[..]) {
             Ok((_, send_addr)) => {
                 debug!("send_addr is {:?}", send_addr);

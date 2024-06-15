@@ -1,4 +1,7 @@
-use std::{net::UdpSocket, thread};
+use std::{
+    net::{SocketAddr, UdpSocket},
+    thread,
+};
 
 use log::{debug, error, info};
 use net::input::{input_packet_size, LVInputEvent, LVInputEventType};
@@ -18,9 +21,17 @@ impl LVInputServer {
 
     pub fn start_receive_loop(
         &self,
+        input_target_addr: SocketAddr,
         mut input_emulator: Box<dyn LVInputEmulator>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let socket = UdpSocket::bind(&self.bind_addr).expect("Failed to make socket");
+
+        // How do we guarantee this gets to the other side?
+        for _ in 0..5 {
+            debug!("sending ping to {:?}", input_target_addr);
+            socket.send_to(&[1, 0, 0, 0], input_target_addr);
+        }
+
         info!("binding input server at {}", self.bind_addr);
 
         // The server pads the input data

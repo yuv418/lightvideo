@@ -46,20 +46,34 @@ pub fn input_packet_size() -> usize {
 #[repr(C)]
 #[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
 pub struct LVKeyboardEvent {
-    key_code: u8,
-    state: u8,
+    pub key_code: u8,
+    pub state: u8,
 }
 
 impl LVKeyboardEvent {
+    pub fn new(key_code: KeyCode, state: ElementState) -> Self {
+        Self {
+            key_code: unsafe { std::mem::transmute(key_code) },
+            state: match state {
+                ElementState::Pressed => 0,
+                ElementState::Released => 1,
+            },
+        }
+    }
     pub fn get_key_code(&self) -> KeyCode {
         // instead of typing out a huge table, we will use unsafe for now
         // TODO fix
 
         unsafe { std::mem::transmute(self.key_code) }
     }
-    pub fn get_element_state(&self) -> ElementState {
-        // TODO fix
-        unsafe { std::mem::transmute(self.key_code) }
+
+    pub fn get_element_state(&self) -> Option<ElementState> {
+        match self.state {
+            0 => Some(ElementState::Pressed),
+            1 => Some(ElementState::Released),
+            // TODO don't panic
+            _ => None,
+        }
     }
 }
 
@@ -67,13 +81,32 @@ impl LVKeyboardEvent {
 #[repr(C)]
 #[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
 pub struct LVMouseClickEvent {
-    button: u32,
+    pub button: u32,
 }
 
 impl LVMouseClickEvent {
-    pub fn get_button(&self) -> MouseButton {
+    pub fn new(btn: MouseButton) -> Self {
+        Self {
+            button: match btn {
+                MouseButton::Left => 0,
+                MouseButton::Right => 1,
+                MouseButton::Middle => 2,
+                MouseButton::Back => 3,
+                MouseButton::Forward => 4,
+                MouseButton::Other(_) => 5,
+            },
+        }
+    }
+    pub fn get_button(&self) -> Option<MouseButton> {
         // TODO fix
-        unsafe { std::mem::transmute(self.button) }
+        match self.button {
+            0 => Some(MouseButton::Left),
+            1 => Some(MouseButton::Right),
+            2 => Some(MouseButton::Middle),
+            3 => Some(MouseButton::Back),
+            4 => Some(MouseButton::Forward),
+            _ => None,
+        }
     }
 }
 

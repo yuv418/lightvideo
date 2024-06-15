@@ -1,13 +1,16 @@
 // TODO: we need to move some of this to a different directory
 
 use std::{
-    mem::align_of,
+    mem::{align_of, size_of},
     net::{SocketAddrV4, UdpSocket},
     thread,
 };
 
 use log::{debug, error};
-use net::input::{input_packet_size, LVInputEvent, LVInputEventType, LVMouseMoveEvent};
+use net::input::{
+    input_packet_size, LVInputEvent, LVInputEventType, LVKeyboardEvent, LVMouseClickEvent,
+    LVMouseMoveEvent, LVMouseWheelEvent,
+};
 
 pub fn start(
     bind_addr: SocketAddrV4,
@@ -31,17 +34,19 @@ pub fn start(
                             debug!("sending event {:?}", ev);
                             inp_buffer[0] = match ev {
                                 LVInputEvent::KeyboardEvent(ke) => {
-                                    inp_buffer[max_align..]
+                                    inp_buffer[max_align..max_align + size_of::<LVKeyboardEvent>()]
                                         .copy_from_slice(bytemuck::bytes_of(&ke));
                                     LVInputEventType::KeyboardEvent
                                 }
                                 LVInputEvent::MouseClickEvent(mce) => {
-                                    inp_buffer[max_align..]
+                                    inp_buffer
+                                        [max_align..max_align + size_of::<LVMouseClickEvent>()]
                                         .copy_from_slice(bytemuck::bytes_of(&mce));
                                     LVInputEventType::MouseClickEvent
                                 }
                                 LVInputEvent::MouseWheelEvent(mwe) => {
-                                    inp_buffer[max_align..]
+                                    inp_buffer
+                                        [max_align..max_align + size_of::<LVMouseWheelEvent>()]
                                         .copy_from_slice(bytemuck::bytes_of(&mwe));
                                     LVInputEventType::MouseWheelEvent
                                 }
@@ -52,7 +57,9 @@ pub fn start(
                                         "mouse move alignment is {}",
                                         align_of::<LVMouseMoveEvent>()
                                     );
-                                    inp_buffer[max_align..].copy_from_slice(dat);
+                                    inp_buffer
+                                        [max_align..max_align + size_of::<LVMouseMoveEvent>()]
+                                        .copy_from_slice(dat);
                                     LVInputEventType::MouseMoveEvent
                                 }
                             } as u8;

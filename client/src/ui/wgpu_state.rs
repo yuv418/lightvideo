@@ -204,11 +204,11 @@ impl WGPUState {
                         y: position.y,
                     }));
             }
-            WindowEvent::MouseInput { button, .. } => {
-                debug!("mouse clicked {:?}", button);
+            WindowEvent::MouseInput { button, state, .. } => {
+                debug!("mouse clicked {:?} and state {:?}", button, state);
                 let _ = self.input_send
                     .try_send(LVInputEvent::MouseClickEvent(LVMouseClickEvent::new(
-                        *button,
+                        *button, *state,
                     )));
             }
             WindowEvent::KeyboardInput { event, .. } => match event.physical_key {

@@ -96,10 +96,11 @@ impl LVKeyboardEvent {
 #[derive(bytemuck::NoUninit, bytemuck::AnyBitPattern, Clone, Copy, Default, Debug)]
 pub struct LVMouseClickEvent {
     pub button: u32,
+    pub state: u32,
 }
 
 impl LVMouseClickEvent {
-    pub fn new(btn: MouseButton) -> Self {
+    pub fn new(btn: MouseButton, state: ElementState) -> Self {
         Self {
             button: match btn {
                 MouseButton::Left => 0,
@@ -108,6 +109,10 @@ impl LVMouseClickEvent {
                 MouseButton::Back => 3,
                 MouseButton::Forward => 4,
                 MouseButton::Other(_) => 5,
+            },
+            state: match state {
+                ElementState::Pressed => 0,
+                ElementState::Released => 1,
             },
         }
     }
@@ -119,6 +124,15 @@ impl LVMouseClickEvent {
             2 => Some(MouseButton::Middle),
             3 => Some(MouseButton::Back),
             4 => Some(MouseButton::Forward),
+            _ => None,
+        }
+    }
+
+    pub fn get_element_state(&self) -> Option<ElementState> {
+        match self.state {
+            0 => Some(ElementState::Pressed),
+            1 => Some(ElementState::Released),
+            // TODO don't panic
             _ => None,
         }
     }

@@ -10,6 +10,10 @@ for i in sys.argv[1:]:
     print(f"\tx_mean: {df.x.mean()}")
     print(f"\tx_median: {df.x.median()}")
     print(f"\tx_stddev: {df.x.std()}")
+    
+    print(f"\ty_mean: {df.y.mean()}")
+    print(f"\ty_median: {df.y.median()}")
+    print(f"\ty_stddev: {df.y.std()}")
 
     plt.title(i)
     plt.scatter(df.x, df.y)

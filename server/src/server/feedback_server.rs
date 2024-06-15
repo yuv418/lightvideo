@@ -29,7 +29,8 @@ impl LVFeedbackServer {
         let mut decoder_failures = 0;
 
         LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
-        LVStatisticsCollector::register_data("server_ack_time", LVDataType::XYData);
+        LVStatisticsCollector::register_data("server_rtt_time", LVDataType::XYData);
+        LVStatisticsCollector::register_data("server_rtt_bitrate", LVDataType::XYData);
         LVStatisticsCollector::register_data(
             "server_bitrate_ecc_decoder_failures",
             LVDataType::XYData,
@@ -59,8 +60,12 @@ impl LVFeedbackServer {
 
                             // NOTE: We hope that the u128 when they are subtracted will fit within an f32.
                             LVStatisticsCollector::update_data(
-                                "server_ack_time",
+                                "server_rtt_time",
                                 LVDataPoint::XYValue((ack.rtp_seqno as f32, rtt as f32)),
+                            );
+                            LVStatisticsCollector::update_data(
+                                "server_rtt_bitrate",
+                                LVDataPoint::XYValue((bitrate as f32, rtt as f32)),
                             );
                             info!("ack packet is {:?}", ack);
                         }

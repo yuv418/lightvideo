@@ -51,11 +51,15 @@ impl LVInputEmulator for LVX11InputEmulator {
                     }
                 };
 
+                debug!("keycode is {:?}", kb_ev.get_key_code());
+                debug!("scancode is {:?}", kb_ev.get_key_code().to_scancode());
+                // For whatever (legacy) reasons the input is offset by 8
                 self.fake_input.detail = kb_ev
                     .get_key_code()
                     .to_scancode()
                     .ok_or_else(|| anyhow!("Could not convert keycode to scancode."))?
-                    .try_into()?
+                    .try_into()?;
+                self.fake_input.detail += 8;
             }
             LVInputEvent::MouseClickEvent(click_ev) => {
                 // left is 1, middle 2, right 3, guessing back is 8, forward is 9

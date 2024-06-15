@@ -482,6 +482,7 @@ impl LVDecoder {
                     }
 
                     pkt.0.rtp_seqno = packet.header.sequence_number;
+                    pkt.0.send_ts = lvheader.send_timestamp;
                 }
                 None => {
                     warn!("Failed to lock feedback packet")

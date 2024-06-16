@@ -24,9 +24,11 @@ impl LVFeedbackServer {
         // The +1 should be for the extra byte that tells us what type of packet this is.
         let mut msg_buffer =
             vec![0; std::cmp::max(LVFeedbackPacket::no_bytes(), LVAck::no_bytes()) + 1];
-        let mut bitrate = 80000;
+        let mut bitrate = 400000;
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
+        let mut ticks_survived = 0;
+        let mut ticks_to_survive = 10;
 
         LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
         LVStatisticsCollector::register_data("server_rtt_time", LVDataType::XYData);
@@ -113,17 +115,38 @@ impl LVFeedbackServer {
                                                 // in case we want to change the multiplication constant
                                                 // later
 
+                                                ticks_survived = 0;
                                                 // Minimum bitrate
                                                 if bitrate >= 20000 {
+                                                    // If there are failures, the bitrate we go to
+                                                    // has to demonstrate a higher target of stability
+                                                    // before we can upgrade the bitrate again.
+                                                    //
+                                                    // This is great, because it makes us wait
+                                                    // longer, eventually making this so large that 
+                                                    // we have more or less reached a "stable"
+                                                    // equilibrium.
+                                                    ticks_to_survive =
+                                                        (ticks_to_survive as f32 * 1.8) as u32;
+
                                                     (bitrate as f32 * 0.6) as u32
                                                 } else {
                                                     20000
                                                 }
                                             } else if congestion < 0.2 && congestion > 0.15 {
+                                                ticks_survived += 1;
                                                 bitrate
                                             } else {
-                                                bitrate + 400000
+                                                ticks_survived += 1;
+                                                // bitrate + 400000
+                                                if ticks_survived == ticks_to_survive {
+                                                    ticks_survived = 0;
+                                                    bitrate + 4000000
+                                                }
                                                 // (bitrate as f32 - 1000) as u32
+                                                else {
+                                                    bitrate
+                                                }
                                             }
                                         };
 

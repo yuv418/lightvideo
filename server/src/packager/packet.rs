@@ -63,16 +63,13 @@ impl LVErasureManager {
         target_addr: &str,
         rtp: Packet,
     ) -> Result<usize, Box<dyn std::error::Error>> {
-        let pk = LVErasureInformation {
+        let mut pk = LVErasureInformation {
             block_id: self.current_block_id,
             fragment_index: self.current_regular_fragment_index,
             min_fragment_size: EC_RATIO_REGULAR_PACKETS,
             recovery_pkt: false,
             pkt_sizes: [0; EC_RATIO_REGULAR_PACKETS as usize],
-            send_timestamp: SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_millis(),
+            send_timestamp: 0,
         };
 
         trace!("lv erasure information {:?}", pk);
@@ -149,7 +146,14 @@ impl LVErasureManager {
 
         // trace!("payload is {:?}", payload);
 
+        // Doing the timestamp here will make it more reliable and not include
+        // the time for the RS encoder.
+        pk.send_timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_millis();
         pk.to_bytes(&mut self.pkt_data);
+
         self.pkt_sizes[pk.fragment_index as usize] = marshal_size as u16;
 
         {

@@ -24,7 +24,7 @@ impl LVFeedbackServer {
         // The +1 should be for the extra byte that tells us what type of packet this is.
         let mut msg_buffer =
             vec![0; std::cmp::max(LVFeedbackPacket::no_bytes(), LVAck::no_bytes()) + 1];
-        let mut bitrate = 400000;
+        let mut bitrate = 900000;
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
         let mut ticks_survived = 0;
@@ -123,7 +123,7 @@ impl LVFeedbackServer {
                                                     // before we can upgrade the bitrate again.
                                                     //
                                                     // This is great, because it makes us wait
-                                                    // longer, eventually making this so large that 
+                                                    // longer, eventually making this so large that
                                                     // we have more or less reached a "stable"
                                                     // equilibrium.
                                                     ticks_to_survive =
@@ -141,7 +141,7 @@ impl LVFeedbackServer {
                                                 // bitrate + 400000
                                                 if ticks_survived == ticks_to_survive {
                                                     ticks_survived = 0;
-                                                    bitrate + 4000000
+                                                    bitrate + 100000
                                                 }
                                                 // (bitrate as f32 - 1000) as u32
                                                 else {

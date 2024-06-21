@@ -200,7 +200,7 @@ impl WGPUState {
                 debug!("cursor moved to position {:?}", position);
                 let _ = self.input_send
                     .try_send(LVInputEvent::MouseMoveEvent(LVMouseMoveEvent {
-                        x: position.x,
+                        x: position.x + 40.0,
                         y: position.y,
                     }));
             }

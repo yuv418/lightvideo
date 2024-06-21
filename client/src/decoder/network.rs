@@ -10,10 +10,15 @@ use std::{
 
 use bytes::BytesMut;
 use log::{debug, error, info};
-use net::feedback_packet::{LVAck, LVFeedbackPacket};
+use net::{
+    feedback_packet::{LVAck, LVFeedbackPacket},
+    input::LVInputEvent,
+};
 use parking_lot::{Mutex, RwLock};
 use socket2::Socket;
 use thingbuf::mpsc::{blocking::Sender, errors::Closed};
+
+use crate::decoder::input;
 
 use super::feedback;
 
@@ -53,6 +58,7 @@ impl LVNetwork {
     pub fn run(
         &self,
         packet_push: Sender<LVPacketHolder>,
+        inp_recv: flume::Receiver<LVInputEvent>,
         feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -61,7 +67,9 @@ impl LVNetwork {
         thread::Builder::new()
             .name("network_thread".to_string())
             .spawn(move || {
-                if let Err(e) = Self::socket_loop(packet_push, feedback_pkt, &addr, udp_fd) {
+                if let Err(e) =
+                    Self::socket_loop(packet_push, inp_recv, feedback_pkt, &addr, udp_fd)
+                {
                     error!("socket receive loop failed with error {:?}", e);
                 } else {
                     info!("socket receive loop exited.");
@@ -73,6 +81,7 @@ impl LVNetwork {
 
     fn socket_loop(
         packet_push: Sender<LVPacketHolder>,
+        inp_recv: flume::Receiver<LVInputEvent>,
         feedback_pkt: Arc<Mutex<(LVAck, LVFeedbackPacket)>>,
         addr: &str,
         udp_fd: Arc<RwLock<Option<RawFd>>>,
@@ -93,8 +102,18 @@ impl LVNetwork {
         feedback_addr.set_port(feedback_addr.port() + 2);
 
         debug!("initializing feedback server to {:?}", feedback_addr);
+
         // TODO: don't fail so loudly.
         feedback::start(&feedback_addr.to_string(), feedback_pkt.clone())?;
+
+        // Input setup
+        let mut input_bind_addr = feedback_addr.clone();
+        input_bind_addr.set_port(input_bind_addr.port() + 1);
+
+        debug!("initializing input server to {:?}", input_bind_addr);
+
+        input::start(input_bind_addr, inp_recv)?;
+
         loop {
             // By using the packet push, we avoid allocating on the heap every iteration.
             match packet_push.try_send_ref() {

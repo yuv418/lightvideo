@@ -24,9 +24,11 @@ impl LVFeedbackServer {
         // The +1 should be for the extra byte that tells us what type of packet this is.
         let mut msg_buffer =
             vec![0; std::cmp::max(LVFeedbackPacket::no_bytes(), LVAck::no_bytes()) + 1];
-        let mut bitrate = 80000;
+        let mut bitrate = 900000;
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
+        let mut ticks_survived = 0;
+        let mut ticks_to_survive = 10;
 
         LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
         LVStatisticsCollector::register_data("server_rtt_time", LVDataType::XYData);
@@ -40,10 +42,10 @@ impl LVFeedbackServer {
             match stream.read(&mut msg_buffer[..]) {
                 Ok(data_read) => {
                     let feedback_type = msg_buffer[0];
-                    info!("feedback type is {}", feedback_type);
+                    debug!("feedback type is {}", feedback_type);
                     match feedback_type {
                         ACK_TYPE => {
-                            info!(
+                            debug!(
                                 "ack packet to be decoded is {:?}",
                                 &msg_buffer[1..(LVAck::no_bytes() + 1)]
                             );
@@ -56,7 +58,7 @@ impl LVFeedbackServer {
                                 .unwrap()
                                 .as_millis();
                             let rtt = current_time - ack.send_ts;
-                            info!("rtt was {}", rtt);
+                            debug!("rtt was {}", rtt);
 
                             // NOTE: We hope that the u128 when they are subtracted will fit within an f32.
                             LVStatisticsCollector::update_data(
@@ -67,7 +69,7 @@ impl LVFeedbackServer {
                                 "server_rtt_bitrate",
                                 LVDataPoint::XYValue((bitrate as f32, rtt as f32)),
                             );
-                            info!("ack packet is {:?}", ack);
+                            debug!("ack packet is {:?}", ack);
                         }
                         FEEDBACK_TYPE => {
                             debug!(
@@ -112,12 +114,39 @@ impl LVFeedbackServer {
                                                 // this multiplication is not just integer division
                                                 // in case we want to change the multiplication constant
                                                 // later
-                                                (bitrate as f32 * 0.6) as u32
+
+                                                ticks_survived = 0;
+                                                // Minimum bitrate
+                                                if bitrate >= 20000 {
+                                                    // If there are failures, the bitrate we go to
+                                                    // has to demonstrate a higher target of stability
+                                                    // before we can upgrade the bitrate again.
+                                                    //
+                                                    // This is great, because it makes us wait
+                                                    // longer, eventually making this so large that
+                                                    // we have more or less reached a "stable"
+                                                    // equilibrium.
+                                                    ticks_to_survive =
+                                                        (ticks_to_survive as f32 * 1.8) as u32;
+
+                                                    (bitrate as f32 * 0.6) as u32
+                                                } else {
+                                                    20000
+                                                }
                                             } else if congestion < 0.2 && congestion > 0.15 {
+                                                ticks_survived += 1;
                                                 bitrate
                                             } else {
-                                                bitrate + 400000
+                                                ticks_survived += 1;
+                                                // bitrate + 400000
+                                                if ticks_survived == ticks_to_survive {
+                                                    ticks_survived = 0;
+                                                    bitrate + 100000
+                                                }
                                                 // (bitrate as f32 - 1000) as u32
+                                                else {
+                                                    bitrate
+                                                }
                                             }
                                         };
 
@@ -155,7 +184,7 @@ impl LVFeedbackServer {
                             }
                         }
                         _ => {
-                            error!("unknown feedback packet type!")
+                            error!("unknown feedback packet type! type was {}!", feedback_type)
                         }
                     }
                 }
@@ -168,10 +197,10 @@ impl LVFeedbackServer {
         bind_addr: &str,
         bitrate_shared: Arc<Mutex<u32>>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        info!("connecting to feedback server at {}", bind_addr);
+        debug!("connecting to feedback server at {}", bind_addr);
         let tcp_stream = TcpStream::connect(bind_addr)?;
 
-        info!("connected to feedback server at {}", bind_addr);
+        debug!("connected to feedback server at {}", bind_addr);
 
         Self::handle_feedback(tcp_stream, bitrate_shared.clone());
 
@@ -179,7 +208,7 @@ impl LVFeedbackServer {
     }
 
     pub fn begin(&self) -> Arc<Mutex<u32>> {
-        info!("Starting feedback server");
+        debug!("Starting feedback server");
         let bitrate_shared = Arc::new(Mutex::new(80000));
         let bitrate_shared_clone = bitrate_shared.clone();
         let bind_addr_clone = self.bind_addr.clone();

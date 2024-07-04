@@ -23,6 +23,7 @@ reed-solomon-simd = "2.2"
 dcv-color-primitives = "0.6"
 openh264 = { path = "../openh264-rs/openh264" , features = ["decoder", "backtrace"] }
 openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
+cros-codecs = { git = "https://github.com/chromeos/cros-codecs", rev = "111bb26" }
 
 
 # GUI
@@ -45,7 +46,10 @@ net = { path = "../net" }
 # Feedback
 timer = "0.2"
 chrono = "0.4"
-nix = { version = "0.28", features = ["ioctl"] }
+nix = { version = "0.29", features = ["ioctl"] }
 
 # Neworking serialization
 bincode = "1"
+
+# Errors
+anyhow = "1"

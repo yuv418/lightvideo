@@ -10,7 +10,7 @@ use cros_codecs::{
     libva::{Display, Image},
 };
 use dcv_color_primitives::ImageFormat;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use nix::libc::stack_t;
 use openh264::decoder::DecodedYUV;
 
@@ -152,22 +152,27 @@ impl LVVideoDecoder for LVVAAPIDecoder {
 
                             Ok(())
                         }
-                        DecoderEvent::FormatChanged(chg) => Ok(()),
+                        DecoderEvent::FormatChanged(chg) => {
+                            info!("Format changed!");
+                            Ok(())
+                        }
                     },
                     None => Ok(()),
                 }
             }
             Err(DecodeError::CheckEvents) => {
+                info!("in check events...");
                 match self.decoder.next_event() {
                     Some(ev) => match ev {
                         DecoderEvent::FrameReady(x) => {
-                            error!("frame is ready after a checkevents")
+                            todo!("frame is ready after a checkevents")
                         }
-                        DecoderEvent::FormatChanged(ch) => {
+                        DecoderEvent::FormatChanged(mut ch) => {
                             debug!(
                                 "format changed after a checkevents, image format is {:?}",
                                 ch.stream_info().format
-                            )
+                            );
+                            ch.try_format(ch.stream_info().format)?;
                         }
                     },
                     None => warn!("no event after CheckEvents"),
@@ -176,7 +181,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                 Ok(())
             }
             Err(DecodeError::DecoderError(x)) => {
-                error!("failed to decode packet with error {:?}", x);
+                error!("failed to decode packet with error {:#?}", x);
                 Ok(())
             }
             Err(e) => Err(Box::new(e)),

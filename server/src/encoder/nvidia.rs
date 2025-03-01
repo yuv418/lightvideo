@@ -8,13 +8,13 @@ use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
 use image::{ImageBuffer, Rgb};
 use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
-    NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
+    GUID, NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
+    _NV_ENC_MULTI_PASS,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    NV_ENC_RECONFIGURE_PARAMS_VER, _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
-    _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_CONFIG_VER,
+    NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID, NV_ENC_RECONFIGURE_PARAMS_VER,
+    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -69,7 +69,12 @@ impl LVEncoder for LVNvidiaEncoder {
         let mut preset_cfg =
             enc.get_preset_config(
                 NV_ENC_CODEC_H264_GUID,
-                NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
+                GUID {
+                    Data1: 0x6708_2a44,
+                    Data2: 0x4bad,
+                    Data3: 0x48fa,
+                    Data4: [0x98, 0xea, 0x93, 0x5, 0x6d, 0x15, 0xa, 0x58],
+                },
                 nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
             )?;
 
@@ -143,7 +148,7 @@ impl LVEncoder for LVNvidiaEncoder {
 
         // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
 
-        enc_params.framerate(framerate as u32, 1);
+        // enc_params.framerate(framerate as u32, 1);
         enc_params.enable_picture_type_decision();
         enc_params.encode_config(&mut preset_cfg.presetCfg);
 
@@ -279,10 +284,16 @@ impl LVEncoder for LVNvidiaEncoder {
             .averageBitRate
     }
     fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        info!("setting bitrate");
         unsafe {
             (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
         }
+        info!("setting bitrate");
 
+        info!(
+            "param version {} {}",
+            NV_ENC_PRESET_CONFIG_VER, NV_ENC_RECONFIGURE_PARAMS_VER
+        );
         debug!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
 
         let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
@@ -290,6 +301,7 @@ impl LVEncoder for LVNvidiaEncoder {
             reInitEncodeParams: self.enc_params,
             ..Default::default()
         };
+        info!("reconf params {:?}", reconfigure_params);
 
         reconfigure_params.set_resetEncoder(1);
         reconfigure_params.set_forceIDR(1);

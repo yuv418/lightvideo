@@ -28,6 +28,7 @@ openh264-sys2 = { path = "../openh264-rs/openh264-sys2" }
 
 # Hardware Encode
 cudarc = { git = "https://github.com/ViliamVadocz/cudarc.git", branch = "improve-em-api", optional=true }
+# cudarc = { version = "0.9.14", optional = true }
 nvidia-video-codec-sdk = { path = "../nvidia-video-codec-sdk", optional=true }
 
 # Networking

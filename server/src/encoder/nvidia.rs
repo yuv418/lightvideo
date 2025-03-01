@@ -148,7 +148,7 @@ impl LVEncoder for LVNvidiaEncoder {
 
         // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
 
-        // enc_params.framerate(framerate as u32, 1);
+        enc_params.framerate(framerate as u32, 1);
         enc_params.enable_picture_type_decision();
         enc_params.encode_config(&mut preset_cfg.presetCfg);
 

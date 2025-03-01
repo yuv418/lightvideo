@@ -175,6 +175,7 @@ impl LVErasureManager {
         let send_slice = &self.pkt_data[0..(LVErasureInformation::no_bytes() + marshal_size)];
         debug!("sent lv packet as {:?}", send_slice);
 
+        // TODO: use this https://docs.rs/socket2/latest/socket2/struct.Socket.html#method.send_to_vectored
         Ok(socket.send_to(send_slice, target_addr)?)
     }
 }

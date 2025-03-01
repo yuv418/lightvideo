@@ -25,15 +25,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     match std::env::args().nth(1).as_deref() {
         Some("bench") => benchmark::bench(),
+        //
         Some("server") => match std::env::args().nth(2) {
-            Some(addr) => {
+            Some(bind_addr) => {
                 let target_addr = std::env::args().nth(3).unwrap();
 
                 let mut feedback_addr: SocketAddr = target_addr.parse()?;
                 feedback_addr.set_port(feedback_addr.port() + 2);
                 let feedback_server = LVFeedbackServer::new(&feedback_addr.to_string());
 
-                let mut input_addr: SocketAddr = addr.parse()?;
+                let mut input_addr: SocketAddr = bind_addr.parse()?;
                 let mut input_target_addr: SocketAddr = target_addr.parse()?;
                 input_target_addr.set_port(input_target_addr.port() + 3);
                 input_addr.set_port(input_addr.port() + 3);
@@ -44,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let bitrate_mtx = feedback_server.begin();
 
                 let mut streaming_server = LVStreamingServer::new(
-                    &addr,
+                    &bind_addr,
                     &target_addr,
                     60,
                     0,

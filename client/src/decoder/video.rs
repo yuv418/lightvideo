@@ -23,7 +23,10 @@ use net::{
     },
 };
 
-use crate::decoder::network::LVPacketHolder;
+use crate::decoder::{
+    network::LVPacketHolder,
+    video_decoder::{openh264::LVOpenH264Decoder, vaapi::LVVAAPIDecoder},
+};
 use crate::double_buffer::DoubleBuffer;
 
 use nix::ioctl_read_bad;
@@ -36,29 +39,18 @@ ioctl_read_bad!(tiocoutq, TIOCOUTQ, u32);
 pub struct LVDecoder {
     width: u32,
     height: u32,
-    double_buffer: Arc<DoubleBuffer>,
     buffer: Vec<u8>,
-    src_format: ImageFormat,
-    dst_format: ImageFormat,
     decoder: Box<dyn LVVideoDecoder>,
     pkt: H264Packet,
 }
 
 impl LVDecoder {
     // TODO Might be an Arc
-    pub fn new(
-        double_buffer: Arc<DoubleBuffer>,
-        src_format: ImageFormat,
-        dst_format: ImageFormat,
-        decoder: Box<dyn LVVideoDecoder>,
-    ) -> Self {
+    pub fn new(decoder: Box<dyn LVVideoDecoder>) -> Self {
         Self {
             width: 0,
             height: 0,
-            double_buffer,
             buffer: Vec::new(),
-            src_format,
-            dst_format,
             decoder,
             pkt: H264Packet::default(),
         }
@@ -170,8 +162,9 @@ impl LVDecoder {
             color_space: ColorSpace::Rgb,
             num_planes: 1,
         };
-        let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut video_dec = Self::new(double_buffer, src_format, dst_format, decoder);
+        // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
+        let mut decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+        let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;
         let mut height: u32 = 0;

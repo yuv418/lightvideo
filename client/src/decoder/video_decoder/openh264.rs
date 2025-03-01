@@ -8,7 +8,9 @@ use openh264::{
 };
 use statistics::{collector::LVStatisticsCollector, statistics::LVDataPoint};
 
-use crate::double_buffer::DoubleBuffer;
+use crate::{
+    decoder::video_decoder::imgfmt_converter::ImageFormatConverter, double_buffer::DoubleBuffer,
+};
 
 use super::LVVideoDecoder;
 
@@ -19,22 +21,22 @@ pub struct LVOpenH264Decoder {
     dst_format: ImageFormat,
     decoder: Decoder,
     double_buffer: Arc<DoubleBuffer>,
+    imgfmt_converter: Option<ImageFormatConverter>,
 }
 
 impl LVVideoDecoder for LVOpenH264Decoder {
     fn new(
-        width: u32,
-        height: u32,
         src_format: ImageFormat,
         dst_format: ImageFormat,
         double_buffer: Arc<DoubleBuffer>,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         Ok(Self {
-            width,
-            height,
+            width: 0,
+            height: 0,
             src_format,
             dst_format,
             decoder: Decoder::with_config(DecoderConfig::new().debug(true))?,
+            imgfmt_converter: None,
             double_buffer,
         })
     }
@@ -55,11 +57,31 @@ impl LVVideoDecoder for LVOpenH264Decoder {
                             self.width as usize,
                             self.height as usize,
                         );
+
+                        self.imgfmt_converter = Some(ImageFormatConverter::new(
+                            ImageFormat { ..self.src_format },
+                            ImageFormat { ..self.dst_format },
+                            self.width,
+                            self.height,
+                        ))
                     }
 
                     // New scope so rgba_buffer is dropped before swap
                     {
                         let mut rgba_buffer = self.double_buffer.back().unwrap();
+
+                        let y = &yuv_data.y()[0..]; //src_sizes[0] + 1];
+                        let u = &yuv_data.u()[0..]; //src_sizes[1] + 1];
+                        let v = &yuv_data.v()[0..]; //src_sizes[2] + 1];
+                        self.imgfmt_converter.as_mut().unwrap().convert(
+                            y,
+                            u,
+                            v,
+                            &mut rgba_buffer.as_mut().unwrap().buffer,
+                        )?;
+                    }
+
+                    /*{
 
                         let mut src_sizes = [0usize; 3];
                         get_buffers_size(
@@ -82,24 +104,10 @@ impl LVVideoDecoder for LVOpenH264Decoder {
                                     );
 
                         // Convert YUV to Rgba8Uint so it can be copied to wgpu buffer.
-                        match convert_image(
-                            self.width,
-                            self.height,
-                            &self.src_format,
-                            None,
-                            &[y, u, v],
-                            &self.dst_format,
-                            None,
-                            &mut [&mut *rgba_buffer.as_mut().unwrap().buffer],
-                        ) {
-                            Ok(_) => {}
-                            Err(e) => {
-                                warn!("converting image failed with {:?}, continuing", e)
-                            }
-                        }
-                    }
+                    }*/
 
                     // swap doublebuffer
+                    self.double_buffer.swap();
                 })
                 // debug!("h264_data {:?}", h264_data);
             }

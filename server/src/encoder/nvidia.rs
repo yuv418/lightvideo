@@ -4,17 +4,17 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use cudarc::driver::CudaDevice;
-use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
+use dcv_color_primitives::{ImageFormat, convert_image, get_buffers_size};
 use image::{ImageBuffer, Rgb};
 use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
-    NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
+    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
+    NV_ENC_RECONFIGURE_PARAMS_VER,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    NV_ENC_RECONFIGURE_PARAMS_VER, _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
-    _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
+    NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
@@ -279,6 +279,7 @@ impl LVEncoder for LVNvidiaEncoder {
             .averageBitRate
     }
     fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Updating bitrate to {}", new_bitrate);
         unsafe {
             (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
         }

@@ -1,5 +1,5 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
+use dcv_color_primitives::{ColorSpace, ImageFormat, convert_image, get_buffers_size};
 use log::{debug, error, info, trace, warn};
 use openh264::{
     decoder::{Decoder, DecoderConfig},
@@ -19,7 +19,7 @@ use webrtc_util::Unmarshal;
 use net::{
     feedback_packet::{self, LVAck, LVFeedbackPacket},
     packet::{
-        LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+        EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, LVErasureInformation, SIMD_PACKET_SIZE,
     },
 };
 
@@ -163,7 +163,7 @@ impl LVDecoder {
             num_planes: 1,
         };
         // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+        let mut decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
         let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;

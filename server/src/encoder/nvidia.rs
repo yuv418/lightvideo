@@ -10,12 +10,11 @@ use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
     NV_ENC_CODEC_H264_GUID, NV_ENC_CONFIG, NV_ENC_CONFIG_VER, NV_ENC_INITIALIZE_PARAMS,
-    NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID, NV_ENC_RECONFIGURE_PARAMS_VER,
+    NV_ENC_PRESET_P3_GUID, NV_ENC_PRESET_P2_GUID, NV_ENC_RECONFIGURE_PARAMS_VER,
     NV_ENC_TUNING_INFO,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
     NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
-    NV_ENC_PRESET_P3_GUID,
 };
 use nvidia_video_codec_sdk::{
     Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder,
@@ -92,7 +91,7 @@ impl LVEncoder for LVNvidiaEncoder {
         // NVENC params
         
         let codec_guid = NV_ENC_CODEC_H264_GUID;
-        let preset_guid = NV_ENC_PRESET_P1_GUID;
+        let preset_guid = NV_ENC_PRESET_P3_GUID;
         let tuning_info_guid = NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY;
 
         // Initialize the NVENC encoder
@@ -107,7 +106,7 @@ impl LVEncoder for LVNvidiaEncoder {
             .unwrap()
             .presetCfg;
 
-        unsafe {
+        unsafe { 
             info!(
                 "idr period is {}",
                 preset_cfg.encodeCodecConfig.h264Config.idrPeriod
@@ -137,12 +136,13 @@ impl LVEncoder for LVNvidiaEncoder {
 
             /*q.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
             enc_params.encodeCode = q;*/
-        }
 
-        // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
+            // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
+        }
 
         enc_params.framerate(framerate as u32, 1);
         enc_params.enable_picture_type_decision();
+        
         enc_params.encode_config(&mut preset_cfg);
 
         let param_clone = enc_params.param.clone();

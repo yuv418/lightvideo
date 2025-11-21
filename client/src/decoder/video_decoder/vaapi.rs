@@ -10,7 +10,7 @@ use cros_codecs::{
     libva::{Display, Image},
 };
 use dcv_color_primitives::ImageFormat;
-use log::{debug, error, warn};
+use log::{debug, error, info, warn};
 use nix::libc::stack_t;
 use openh264::decoder::DecodedYUV;
 
@@ -64,14 +64,46 @@ impl LVVideoDecoder for LVVAAPIDecoder {
     fn decode(&mut self, timestamp: u64, packet: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         // drain event q
 
+        let mut events = 0;
         while let Some(event) = self.decoder.next_event() {
+            events += 1;
             match event {
                 DecoderEvent::FrameReady(frame) => {
-                    // frame
+                    info!("a frame is ready!");
+                    // New scope to unlock the double buffer frame
+                    {
+                        let mut db_frame = self.double_buffer.back().unwrap();
+                        let dyn_pic = frame.dyn_picture();
+                        let mut mappable_handle = dyn_pic.dyn_mappable_handle()?;
+
+                        if self.yuv_buffer.len() != mappable_handle.image_size() {
+                            self.yuv_buffer = vec![0; mappable_handle.image_size()];
+                        }
+                        mappable_handle.read(&mut self.yuv_buffer)?;
+
+                        // We need to convert from I420 to RGBA or whatever.
+                        // perform some slicing
+
+                        let y_end = (self.height * self.width) as usize;
+                        let y = &self.yuv_buffer[..y_end];
+                        // dangerous variable name
+                        let u_size = (self.height / 2 * self.width / 2) as usize;
+                        let u = &self.yuv_buffer[y_end..y_end + u_size];
+                        let v = &self.yuv_buffer[y_end + u_size..];
+
+                        self.imgfmt_converter.as_mut().unwrap().convert(
+                            y,
+                            u,
+                            v,
+                            &mut db_frame.as_mut().unwrap().buffer,
+                        )?;
+                    }
+                    self.double_buffer.swap();
                 }
                 // TODO no cloning
                 DecoderEvent::FormatChanged(mut format_setter) => {
-                    format_setter.try_format(cros_codecs::DecodedFormat::I420)?;
+                    info!("setting format to {:?}", format_setter.stream_info().format);
+                    format_setter.try_format(format_setter.stream_info().format)?;
                     let min_num_frames = {
                         let sinfo = format_setter.stream_info();
                         self.width = sinfo.display_resolution.width;
@@ -106,6 +138,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                 }
             }
         }
+        info!("processed {} events", events);
 
         // then decode.
 
@@ -116,67 +149,32 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                     "stream info is {:?} and amount decoded is {}",
                     stream_info.format, amt_decoded
                 );
-
-                match self.decoder.next_event() {
-                    Some(ev) => match ev {
-                        DecoderEvent::FrameReady(frame) => {
-                            // New scope to unlock the double buffer frame
-                            {
-                                let mut db_frame = self.double_buffer.back().unwrap();
-                                let dyn_pic = frame.dyn_picture();
-                                let mut mappable_handle = dyn_pic.dyn_mappable_handle()?;
-
-                                if self.yuv_buffer.len() != mappable_handle.image_size() {
-                                    self.yuv_buffer = vec![0; mappable_handle.image_size()];
-                                }
-                                mappable_handle.read(&mut self.yuv_buffer)?;
-
-                                // We need to convert from I420 to RGBA or whatever.
-                                // perform some slicing
-
-                                let y_end = (self.height * self.width) as usize;
-                                let y = &self.yuv_buffer[..y_end];
-                                // dangerous variable name
-                                let u_size = (self.height / 2 * self.width / 2) as usize;
-                                let u = &self.yuv_buffer[y_end..y_end + u_size];
-                                let v = &self.yuv_buffer[y_end + u_size..];
-
-                                self.imgfmt_converter.as_mut().unwrap().convert(
-                                    y,
-                                    u,
-                                    v,
-                                    &mut db_frame.as_mut().unwrap().buffer,
-                                )?;
-                            }
-                            self.double_buffer.swap();
-
-                            Ok(())
-                        }
-                        DecoderEvent::FormatChanged(chg) => Ok(()),
-                    },
-                    None => Ok(()),
-                }
+                Ok(())
             }
+            // delete this, makes zero sense
             Err(DecodeError::CheckEvents) => {
-                match self.decoder.next_event() {
+                info!("in check events...");
+                /*match self.decoder.next_event() {
                     Some(ev) => match ev {
                         DecoderEvent::FrameReady(x) => {
-                            error!("frame is ready after a checkevents")
+                            todo!("frame is ready after a checkevents")
                         }
-                        DecoderEvent::FormatChanged(ch) => {
+                        DecoderEvent::FormatChanged(mut ch) => {
                             debug!(
                                 "format changed after a checkevents, image format is {:?}",
                                 ch.stream_info().format
-                            )
+                            );
+                            ch.try_format(ch.stream_info().format)?;
                         }
                     },
                     None => warn!("no event after CheckEvents"),
                 }
-                self.decoder.decode(timestamp, packet)?;
+                self.decoder.decode(timestamp, packet)?;*/
                 Ok(())
             }
             Err(DecodeError::DecoderError(x)) => {
-                error!("failed to decode packet with error {:?}", x);
+                error!("failed to decode packet with error {:#?}", x);
+                self.decoder.flush()?;
                 Ok(())
             }
             Err(e) => Err(Box::new(e)),

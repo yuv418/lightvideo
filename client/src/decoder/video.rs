@@ -163,7 +163,9 @@ impl LVDecoder {
             num_planes: 1,
         };
         // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
+        // let mut decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
+        let mut decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+
         let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;

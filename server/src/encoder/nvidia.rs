@@ -286,13 +286,16 @@ impl LVEncoder for LVNvidiaEncoder {
 
     fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
         info!("Updating bitrate to {}", new_bitrate);
-        info!("version value is {}", unsafe { (*self.enc_params.encodeConfig).version });
-        info!("struct bitrate is {}", unsafe { (*self.enc_params.encodeConfig).rcParams.averageBitRate });
+        info!("NV_ENC_CONFIG version value is {}", self.enc_config.version);
 
         self.enc_config.rcParams.averageBitRate = new_bitrate;
-        unsafe { (*self.enc_params.encodeConfig) = self.enc_config; }
+        let mut clone_config = self.enc_config.clone();
+        info!("NV_ENC_CONFIG new struct bitrate is {}", clone_config.rcParams.averageBitRate);
 
-        info!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
+        unsafe { self.enc_params.encodeConfig = &mut clone_config as *mut NV_ENC_CONFIG; }
+
+        info!("NV_ENC_CONFIG IN INITIALZE PARAMS version value is {}", unsafe { (*self.enc_params.encodeConfig).version });
+        info!("NV_ENC_CONFIG IN INITIALIZE PARAMS struct bitrate is {}", unsafe { (*self.enc_params.encodeConfig).rcParams.averageBitRate });
 
         let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
             version: NV_ENC_RECONFIGURE_PARAMS_VER,

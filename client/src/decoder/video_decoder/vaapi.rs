@@ -10,7 +10,7 @@ use cros_codecs::{
     libva::{Display, Image},
 };
 use dcv_color_primitives::ImageFormat;
-use log::{debug, error, info, warn};
+use log::{error, info, trace, warn};
 use nix::libc::stack_t;
 use openh264::decoder::DecodedYUV;
 
@@ -44,7 +44,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                         disp,
                         cros_codecs::BlockingMode::Blocking,
                     )?;
-                debug!("vaapi disp and decoder created");
+                trace!("vaapi disp and decoder created");
 
                 Ok(Self {
                     width: 0,
@@ -66,12 +66,12 @@ impl LVVideoDecoder for LVVAAPIDecoder {
     fn decode(&mut self, timestamp: u64, packet: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         // drain event q
 
-        debug!("timestamp {timestamp}");
+        trace!("timestamp {timestamp}");
         let mut ret_val = Ok(());
         let mut packet_window = packet;
 
         let mut process_events = |decoder: &mut StatelessDecoder<H264, VaapiBackend<()>> | -> Result<(), Box<dyn std::error::Error>> {
-            debug!("in check events...");
+            trace!("in check events...");
 
             let mut events = 0;
             let mut last_frame = None;
@@ -84,7 +84,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
 
                 match event {
                     DecoderEvent::FrameReady(frame) => {
-                        debug!("a frame is ready!");
+                        trace!("a frame is ready!");
 
                         last_frame = Some(frame.clone());
                     }
@@ -145,7 +145,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
 
             // In the case of a frame, process it now.
             if let Some(frame) = last_frame {
-                info!("swapping last frame");
+                trace!("swapping last frame");
                 {
                     let mut db_frame = self.double_buffer.back().unwrap();
 
@@ -178,13 +178,13 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                 }
                 self.double_buffer.swap();
             }
-            info!("processed {} events", events);
+            trace!("processed {} events", events);
 
             Ok(())
         };
 
         while packet_window.len() > 0 {
-            debug!("packet window length is {}", packet_window.len());
+            trace!("packet window length is {}", packet_window.len());
             loop {
                 let mut must_retry_decode = false;
                 let decode_result = self.decoder.decode(timestamp, packet_window);
@@ -194,7 +194,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                         packet_window = &packet_window[amt_decoded..];
 
                         if let Some(stream_info) = self.decoder.stream_info() {
-                            debug!(
+                            trace!(
                                 "stream info is {:?} and amount decoded is {}",
                                 stream_info.format, amt_decoded
                             );
@@ -209,13 +209,13 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                     }
                     // delete this, makes zero sense
                     Err(DecodeError::CheckEvents) => {
-                        debug!("decoder told us to check events");
+                        trace!("decoder told us to check events");
                         must_retry_decode = true;
 
                         process_events(&mut self.decoder)
                     }
                     Err(DecodeError::NotEnoughOutputBuffers(_)) => {
-                        debug!(
+                        trace!(
                             "not enough buffers, means frame is ready probably, processing events..."
                         );
                         process_events(&mut self.decoder)
@@ -231,11 +231,11 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                     }
                 };
 
-                debug!("must retry decode {must_retry_decode}");
+                trace!("must retry decode {must_retry_decode}");
                 if !must_retry_decode {
                     break;
                 } else {
-                    debug!("retrying decode because there were events")
+                    trace!("retrying decode because there were events")
                 }
             }
         }

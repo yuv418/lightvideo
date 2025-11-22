@@ -28,7 +28,7 @@ impl LVFeedbackServer {
         let mut oo_blocks = 0;
         let mut decoder_failures = 0;
         let mut ticks_survived = 0;
-        let mut ticks_to_survive = 10;
+        let mut ticks_to_survive = 5;
 
         LVStatisticsCollector::register_data("server_bitrate_oo_blocks", LVDataType::XYData);
         LVStatisticsCollector::register_data("server_rtt_time", LVDataType::XYData);

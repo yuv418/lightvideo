@@ -42,7 +42,7 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                 let decoder: StatelessDecoder<H264, VaapiBackend<()>> =
                     StatelessDecoder::<H264, VaapiBackend<()>>::new_vaapi(
                         disp,
-                        cros_codecs::BlockingMode::NonBlocking,
+                        cros_codecs::BlockingMode::Blocking,
                     )?;
                 debug!("vaapi disp and decoder created");
 
@@ -70,12 +70,126 @@ impl LVVideoDecoder for LVVAAPIDecoder {
         let mut ret_val = Ok(());
         let mut packet_window = packet;
 
+        let mut process_events = |decoder: &mut StatelessDecoder<H264, VaapiBackend<()>> | -> Result<(), Box<dyn std::error::Error>> {
+            debug!("in check events...");
+
+            let mut events = 0;
+            let mut last_frame = None;
+
+            while let Some(event) = decoder.next_event() {
+                // For performance reasons, if VA-API is going to give us multiple frames,
+                // then we should choose the last one to display, to avoid extra pixel format
+                // conversions
+                events += 1;
+
+                match event {
+                    DecoderEvent::FrameReady(frame) => {
+                        debug!("a frame is ready!");
+
+                        last_frame = Some(frame.clone());
+                    }
+                    // TODO no cloning
+                    DecoderEvent::FormatChanged(mut format_setter) => {
+                        // WARN: this should run again if the format has actually changed
+                        // (eg. the stream was not corrupted)
+                        if !self.has_setup_buffers {
+                            info!("setting format to {:?}", format_setter.stream_info().format);
+                            format_setter.try_format(format_setter.stream_info().format)?;
+                            let min_num_frames = {
+                                let sinfo = format_setter.stream_info();
+                                self.width = sinfo.display_resolution.width;
+                                self.height = sinfo.display_resolution.height;
+                                self.double_buffer.initialize(
+                                    (4 * self.width * self.height) as usize,
+                                    self.width as usize,
+                                    self.height as usize,
+                                );
+                                sinfo.min_num_frames
+                            };
+
+                            let pools = format_setter.frame_pool(PoolLayer::All);
+                            let nb_pools = pools.len();
+
+                            info!("there are {nb_pools} pools");
+
+                            for pool in pools {
+                                let pool_num_frames = pool.num_managed_frames();
+                                info!(
+                                    "there are {pool_num_frames} frames min frame {min_num_frames}"
+                                );
+                                if pool_num_frames < (min_num_frames / nb_pools) {
+                                    info!(
+                                        "adding {} frames to pool",
+                                        min_num_frames - pool_num_frames
+                                    );
+                                    pool.add_frames(vec![
+                                                ();
+                                                (min_num_frames - pool_num_frames)
+                                            ])?;
+                                }
+                            }
+
+                            // Initialize stuff that converts from I420 to RGBA or whatever the
+                            // target format is
+
+                            self.imgfmt_converter = Some(ImageFormatConverter::new(
+                                ImageFormat { ..self.src_format },
+                                ImageFormat { ..self.dst_format },
+                                self.width,
+                                self.height,
+                            ))
+                        }
+                    }
+                }
+            }
+
+            // In the case of a frame, process it now.
+            if let Some(frame) = last_frame {
+                info!("swapping last frame");
+                {
+                    let mut db_frame = self.double_buffer.back().unwrap();
+
+                    frame.sync()?;
+
+                    let dyn_pic = frame.dyn_picture();
+                    let mut mappable_handle = dyn_pic.dyn_mappable_handle()?;
+
+                    if self.yuv_buffer.len() != mappable_handle.image_size() {
+                        self.yuv_buffer = vec![0; mappable_handle.image_size()];
+                    }
+                    mappable_handle.read(&mut self.yuv_buffer)?;
+
+                    // We need to convert from I420 to RGBA or whatever.
+                    // perform some slicing
+
+                    let y_end = (self.height * self.width) as usize;
+                    let y = &self.yuv_buffer[..y_end];
+                    // dangerous variable name
+                    let u_size = (self.height / 2 * self.width / 2) as usize;
+                    let u = &self.yuv_buffer[y_end..y_end + u_size];
+                    let v = &self.yuv_buffer[y_end + u_size..];
+
+                    self.imgfmt_converter.as_mut().unwrap().convert(
+                        y,
+                        u,
+                        v,
+                        &mut db_frame.as_mut().unwrap().buffer,
+                    )?;
+                }
+                self.double_buffer.swap();
+            }
+            info!("processed {} events", events);
+
+            Ok(())
+        };
+
         while packet_window.len() > 0 {
             debug!("packet window length is {}", packet_window.len());
             loop {
                 let mut must_retry_decode = false;
+                let decode_result = self.decoder.decode(timestamp, packet_window);
 
-                ret_val = match self.decoder.decode(timestamp, packet_window) {
+                ret_val = match decode_result {
                     Ok(amt_decoded) => {
                         packet_window = &packet_window[amt_decoded..];
 
@@ -84,6 +198,9 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                                 "stream info is {:?} and amount decoded is {}",
                                 stream_info.format, amt_decoded
                             );
+
+                            process_events(&mut self.decoder)?;
+
                             Ok(())
                         } else {
                             warn!("could not get stream info, was none");
@@ -91,128 +208,21 @@ impl LVVideoDecoder for LVVAAPIDecoder {
                         }
                     }
                     // delete this, makes zero sense
-                    Err(DecodeError::CheckEvents | DecodeError::NotEnoughOutputBuffers(_)) => {
-                        debug!("in check events...");
-
-                        let mut events = 0;
-                        let mut last_frame = None;
-
-                        while let Some(event) = self.decoder.next_event() {
-                            // For performance reasons, if VA-API is going to give us multiple frames,
-                            // then we should choose the last one to display, to avoid extra pixel format
-                            // conversions
-                            events += 1;
-
-                            match event {
-                                DecoderEvent::FrameReady(frame) => {
-                                    debug!("a frame is ready!");
-
-                                    last_frame = Some(frame.clone());
-                                }
-                                // TODO no cloning
-                                DecoderEvent::FormatChanged(mut format_setter) => {
-                                    // WARN: this should run again if the format has actually changed
-                                    // (eg. the stream was not corrupted)
-                                    if !self.has_setup_buffers {
-                                        info!(
-                                            "setting format to {:?}",
-                                            format_setter.stream_info().format
-                                        );
-                                        format_setter
-                                            .try_format(format_setter.stream_info().format)?;
-                                        let min_num_frames = {
-                                            let sinfo = format_setter.stream_info();
-                                            self.width = sinfo.display_resolution.width;
-                                            self.height = sinfo.display_resolution.height;
-                                            self.double_buffer.initialize(
-                                                (4 * self.width * self.height) as usize,
-                                                self.width as usize,
-                                                self.height as usize,
-                                            );
-                                            sinfo.min_num_frames
-                                        };
-
-                                        let pools = format_setter.frame_pool(PoolLayer::All);
-                                        let nb_pools = pools.len();
-
-                                        info!("there are {nb_pools} pools");
-
-                                        for pool in pools {
-                                            let pool_num_frames = pool.num_managed_frames();
-                                            info!(
-                                                "there are {pool_num_frames} frames min frame {min_num_frames}"
-                                            );
-                                            if pool_num_frames < (min_num_frames / nb_pools) {
-                                                info!(
-                                                    "adding {} frames to pool",
-                                                    min_num_frames - pool_num_frames
-                                                );
-                                                pool.add_frames(vec![
-                                                ();
-                                                7
-                                                // min_num_frames - pool_num_frames
-                                            ])?;
-                                            }
-                                        }
-
-                                        // Initialize stuff that converts from I420 to RGBA or whatever the
-                                        // target format is
-
-                                        self.imgfmt_converter = Some(ImageFormatConverter::new(
-                                            ImageFormat { ..self.src_format },
-                                            ImageFormat { ..self.dst_format },
-                                            self.width,
-                                            self.height,
-                                        ))
-                                    }
-                                }
-                            }
-                        }
-
-                        // In the case of a frame, process it now.
-                        if let Some(frame) = last_frame {
-                            info!("swapping last frame");
-                            {
-                                let mut db_frame = self.double_buffer.back().unwrap();
-
-                                frame.sync()?;
-
-                                let dyn_pic = frame.dyn_picture();
-                                let mut mappable_handle = dyn_pic.dyn_mappable_handle()?;
-
-                                if self.yuv_buffer.len() != mappable_handle.image_size() {
-                                    self.yuv_buffer = vec![0; mappable_handle.image_size()];
-                                }
-                                mappable_handle.read(&mut self.yuv_buffer)?;
-
-                                // We need to convert from I420 to RGBA or whatever.
-                                // perform some slicing
-
-                                let y_end = (self.height * self.width) as usize;
-                                let y = &self.yuv_buffer[..y_end];
-                                // dangerous variable name
-                                let u_size = (self.height / 2 * self.width / 2) as usize;
-                                let u = &self.yuv_buffer[y_end..y_end + u_size];
-                                let v = &self.yuv_buffer[y_end + u_size..];
-
-                                self.imgfmt_converter.as_mut().unwrap().convert(
-                                    y,
-                                    u,
-                                    v,
-                                    &mut db_frame.as_mut().unwrap().buffer,
-                                )?;
-                            }
-                            self.double_buffer.swap();
-                        }
-                        info!("processed {} events", events);
-
+                    Err(DecodeError::CheckEvents) => {
+                        debug!("decoder told us to check events");
                         must_retry_decode = true;
 
-                        Ok(())
+                        process_events(&mut self.decoder)
+                    }
+                    Err(DecodeError::NotEnoughOutputBuffers(_)) => {
+                        debug!(
+                            "not enough buffers, means frame is ready probably, processing events..."
+                        );
+                        process_events(&mut self.decoder)
                     }
                     Err(DecodeError::DecoderError(x)) => {
                         error!("failed to decode packet with error {:#?}", x);
-                        self.decoder.flush()?;
+                        // self.decoder.flush()?;
                         Ok(())
                     }
                     Err(e) => {

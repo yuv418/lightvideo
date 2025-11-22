@@ -25,7 +25,7 @@ use net::{
 
 use crate::decoder::{
     network::LVPacketHolder,
-    video_decoder::{openh264::LVOpenH264Decoder, vaapi::LVVAAPIDecoder},
+    video_decoder::{file::LVFileDecoder, openh264::LVOpenH264Decoder, vaapi::LVVAAPIDecoder},
 };
 use crate::double_buffer::DoubleBuffer;
 
@@ -105,6 +105,7 @@ impl LVDecoder {
             // Decode and clear buffer
             if !self.buffer.is_empty() {
                 // call decode handler here.
+                trace!("buffer is {:?}", self.buffer);
                 self.decoder
                     .decode(packet.header.timestamp as u64, &self.buffer)?
             } else {
@@ -164,7 +165,7 @@ impl LVDecoder {
         };
         // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
         // let mut decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
-        let mut decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+        let decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
         let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;
@@ -343,6 +344,7 @@ impl LVDecoder {
                     "packet out of order: current {} prev {}",
                     lvheader.fragment_index, lvheader_prev_fragment_index
                 );
+                // ERROR: line 347 here can crash
                 lost_packets += lvheader.fragment_index
                     - ((lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS);
 

@@ -4,6 +4,7 @@ use dcv_color_primitives::ImageFormat;
 
 use crate::double_buffer::DoubleBuffer;
 
+pub mod file;
 pub mod imgfmt_converter;
 pub mod openh264;
 pub mod vaapi;

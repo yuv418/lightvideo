@@ -27,7 +27,7 @@ mod double_buffer;
 mod ui;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    Logger::try_with_str("trace, calloop=info, wgpu=info, client::decoder::video_decoder=debug, client::decoder::video=info, client::decoder::feedback=info, client::decoder::network=info, client::ui::wgpu_state=info, client::double_buffer=info")?.start()?;
+    Logger::try_with_str("info, calloop=info, wgpu=info")?.start()?; // client::decoder::video_decoder=debug, client::decoder::video=info, client::decoder::feedback=info, client::decoder::network=info, client::ui::wgpu_state=info, client::double_buffer=info")?.start()?;
 
     let quit_rx = LVStatisticsCollector::start();
 

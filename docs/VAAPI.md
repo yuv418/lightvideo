@@ -4,7 +4,7 @@ VAAPI (decode for now) support is provided by `cros-codecs`.
 
 ## Debugging
 
-Follow the instructions in `Debugging.md` to obtain a `test.h264` bitstream.
+Follow the instructions in `Debugging.md` to obtain a `test.h264` bitstream. The `test.h264` file referenced there can be used in conjunction with the `ccdec` utility in `cros-codecs` to test whether or not the `cros-codecs` library is unable to decode the bitstream or whether there is an issue in how we invoke the `cros-codecs` library.
 
 The following script uses `ccdec` to output a sequence of decoded NV12 frames from the original `test.h264` bitstream:
 

@@ -22,7 +22,7 @@ The `trace` logging is useful to understand what `cros-codecs` is doing under th
 
 ## Performance Analyses
 
-All metrics are in *milliseconds*.
+All metrics are in *milliseconds*. **The y-axis is wrong.**
 
 This is VA-API's `client_backend_decode_time`.
 ```

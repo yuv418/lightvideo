@@ -106,8 +106,15 @@ impl LVDecoder {
             if !self.buffer.is_empty() {
                 // call decode handler here.
                 trace!("buffer is {:?}", self.buffer);
+                let time_before_decode = time.elapsed();
+
                 self.decoder
-                    .decode(packet.header.timestamp as u64, &self.buffer)?
+                    .decode(packet.header.timestamp as u64, &self.buffer)?;
+
+                LVStatisticsCollector::update_data(
+                    "client_backend_decode_time",
+                    LVDataPoint::TimeElapsed(time.elapsed() - time_before_decode),
+                );
             } else {
                 debug!("skipping decode empty packet");
             }
@@ -151,6 +158,7 @@ impl LVDecoder {
 
         LVStatisticsCollector::register_data("client_packets_out_of_order", LVDataType::Aggregate);
         LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("client_backend_decode_time", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("client_failed_decode_packets", LVDataType::Aggregate);
 
         let src_format = ImageFormat {
@@ -164,8 +172,8 @@ impl LVDecoder {
             num_planes: 1,
         };
         // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        // let decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
-        let decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+        let decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
+        // let decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
         let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;

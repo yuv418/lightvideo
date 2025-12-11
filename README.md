@@ -94,7 +94,8 @@ For more info on the metric types and such, look at the Organization section.
 
 ## Demo
 
-![video](docs/demo.mp4)
+https://github.com/user-attachments/assets/4a066168-e143-4d38-9a0b-957c26ed8023
+
 
 For context: with current experimental parameters, the decoder takes a while to get to a high bitrate (and might not if the network conditions are bad). Yes, there is a small mouse offset bug. This is running on NVENC encoder and a OpenH264 decoder.
 

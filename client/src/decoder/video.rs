@@ -1,5 +1,5 @@
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use dcv_color_primitives::{convert_image, get_buffers_size, ColorSpace, ImageFormat};
+use dcv_color_primitives::{ColorSpace, ImageFormat, convert_image, get_buffers_size};
 use log::{debug, error, info, trace, warn};
 use openh264::{
     decoder::{Decoder, DecoderConfig},
@@ -19,44 +19,38 @@ use webrtc_util::Unmarshal;
 use net::{
     feedback_packet::{self, LVAck, LVFeedbackPacket},
     packet::{
-        LVErasureInformation, EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, SIMD_PACKET_SIZE,
+        EC_RATIO_RECOVERY_PACKETS, EC_RATIO_REGULAR_PACKETS, LVErasureInformation, SIMD_PACKET_SIZE,
     },
 };
 
-use crate::decoder::network::LVPacketHolder;
+use crate::decoder::{
+    network::LVPacketHolder,
+    video_decoder::{file::LVFileDecoder, openh264::LVOpenH264Decoder, vaapi::LVVAAPIDecoder},
+};
 use crate::double_buffer::DoubleBuffer;
 
 use nix::ioctl_read_bad;
 use nix::libc::TIOCOUTQ;
+
+use super::video_decoder::LVVideoDecoder;
 
 ioctl_read_bad!(tiocoutq, TIOCOUTQ, u32);
 
 pub struct LVDecoder {
     width: u32,
     height: u32,
-    double_buffer: Arc<DoubleBuffer>,
     buffer: Vec<u8>,
-    src_format: ImageFormat,
-    dst_format: ImageFormat,
-    decoder: Decoder,
+    decoder: Box<dyn LVVideoDecoder>,
     pkt: H264Packet,
 }
 
 impl LVDecoder {
     // TODO Might be an Arc
-    pub fn new(
-        double_buffer: Arc<DoubleBuffer>,
-        src_format: ImageFormat,
-        dst_format: ImageFormat,
-        decoder: Decoder,
-    ) -> Self {
+    pub fn new(decoder: Box<dyn LVVideoDecoder>) -> Self {
         Self {
             width: 0,
             height: 0,
-            double_buffer,
             buffer: Vec::new(),
-            src_format,
-            dst_format,
             decoder,
             pkt: H264Packet::default(),
         }
@@ -110,81 +104,17 @@ impl LVDecoder {
         if is_partition_head {
             // Decode and clear buffer
             if !self.buffer.is_empty() {
-                match self.decoder.decode(&self.buffer) {
-                    Ok(yuv) => {
-                        if let Some(ref yuv_data) = yuv {
-                            // Set up target buffer/data for calls to YUV->RGBA conversion
-                            if self.double_buffer.uninitialized() {
-                                let strides_yuv = yuv_data.strides_yuv();
-                                self.width = strides_yuv.0 as u32;
-                                self.height = yuv_data.height() as u32;
-                                self.double_buffer.initialize(
-                                    (4 * self.width * self.height) as usize,
-                                    self.width as usize,
-                                    self.height as usize,
-                                );
-                            }
-                            debug!("data width: {}, height: {}", self.width, self.height);
+                // call decode handler here.
+                trace!("buffer is {:?}", self.buffer);
+                let time_before_decode = time.elapsed();
 
-                            // New scope so rgba_buffer is dropped before swap
-                            {
-                                let mut rgba_buffer = self.double_buffer.back().unwrap();
+                self.decoder
+                    .decode(packet.header.timestamp as u64, &self.buffer)?;
 
-                                let mut src_sizes = [0usize; 3];
-                                get_buffers_size(
-                                    self.width,
-                                    self.height,
-                                    &self.src_format,
-                                    None,
-                                    &mut src_sizes,
-                                )?;
-
-                                let y = &yuv_data.y()[0..]; //src_sizes[0] + 1];
-                                let u = &yuv_data.u()[0..]; //src_sizes[1] + 1];
-                                let v = &yuv_data.v()[0..]; //src_sizes[2] + 1];
-
-                                debug!(
-                                        "converting image... dest buf size is {}, src_sizes is {:#?}, ysize usize vsize: [{}, {}, {}], strides from class are {:?}",
-                                        rgba_buffer.as_mut().unwrap().buffer.len(),
-                                        src_sizes, y.len(), u.len(), v.len(),
-                                        yuv_data.strides_yuv()
-                                    );
-
-                                // Convert YUV to Rgba8Uint so it can be copied to wgpu buffer.
-                                match convert_image(
-                                    self.width,
-                                    self.height,
-                                    &self.src_format,
-                                    None,
-                                    &[y, u, v],
-                                    &self.dst_format,
-                                    None,
-                                    &mut [&mut *rgba_buffer.as_mut().unwrap().buffer],
-                                ) {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        warn!("converting image failed with {:?}, continuing", e)
-                                    }
-                                }
-                            }
-
-                            // swap doublebuffer
-                            self.double_buffer.swap();
-                        }
-                        // debug!("h264_data {:?}", h264_data);
-                    }
-                    Err(e) => {
-                        error!("Failed to decode pkt {}", e);
-                        if let Some(bt) = e.backtrace() {
-                            error!("backtrace: {}", bt);
-                        }
-
-                        LVStatisticsCollector::update_data(
-                            "client_failed_decode_packets",
-                            LVDataPoint::Increment,
-                        );
-                    }
-                }
+                LVStatisticsCollector::update_data(
+                    "client_backend_decode_time",
+                    LVDataPoint::TimeElapsed(time.elapsed() - time_before_decode),
+                );
             } else {
                 debug!("skipping decode empty packet");
             }
@@ -228,6 +158,7 @@ impl LVDecoder {
 
         LVStatisticsCollector::register_data("client_packets_out_of_order", LVDataType::Aggregate);
         LVStatisticsCollector::register_data("client_decode_packet", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("client_backend_decode_time", LVDataType::TimeSeries);
         LVStatisticsCollector::register_data("client_failed_decode_packets", LVDataType::Aggregate);
 
         let src_format = ImageFormat {
@@ -240,8 +171,10 @@ impl LVDecoder {
             color_space: ColorSpace::Rgb,
             num_planes: 1,
         };
-        let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
-        let mut video_dec = Self::new(double_buffer, src_format, dst_format, decoder);
+        // let mut decoder = Decoder::with_config(DecoderConfig::new().debug(true))?;
+        let decoder = LVOpenH264Decoder::new(src_format, dst_format, double_buffer)?;
+        // let decoder = LVVAAPIDecoder::new(src_format, dst_format, double_buffer)?;
+        let mut video_dec = Self::new(Box::new(decoder));
 
         let mut width: u32 = 0;
         let mut height: u32 = 0;
@@ -419,6 +352,7 @@ impl LVDecoder {
                     "packet out of order: current {} prev {}",
                     lvheader.fragment_index, lvheader_prev_fragment_index
                 );
+                // ERROR: line 347 here can crash
                 lost_packets += lvheader.fragment_index
                     - ((lvheader_prev_fragment_index + 1) % EC_RATIO_REGULAR_PACKETS);
 

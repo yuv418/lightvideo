@@ -7,14 +7,14 @@ use std::{
 use bytes::{buf::Writer, BytesMut};
 use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
 use image::{ImageBuffer, Rgb};
-use log::debug;
+use log::{info, debug};
 use openh264::{
     encoder::{EncodedBitStream, Encoder},
     formats::{YUVBuffer, YUVSource},
     Error as OpenH264Error, Timestamp,
 };
 
-use openh264_sys2::{SEncParamExt, ENCODER_OPTION_BITRATE, LOW_COMPLEXITY, RC_BITRATE_MODE};
+use openh264_sys2::{SEncParamExt, ENCODER_OPTION_MAX_BITRATE, ENCODER_OPTION_BITRATE, LOW_COMPLEXITY, RC_BITRATE_MODE, SBitrateInfo, SPATIAL_LAYER_ALL};
 use statistics::{
     collector::LVStatisticsCollector,
     statistics::{LVDataPoint, LVDataType},
@@ -29,6 +29,7 @@ pub struct LVOpenH264Encoder {
 
     // Params
     params: SEncParamExt,
+    bitrate: SBitrateInfo,
 
     // Image conversion stuff
     src_fmt: ImageFormat,
@@ -49,7 +50,7 @@ impl LVEncoder for LVOpenH264Encoder {
 
         params.iPicWidth = width as c_int;
         params.iPicHeight = height as c_int;
-        // params.iRCMode = RC_BITRATE_MODE;
+        params.iRCMode = RC_BITRATE_MODE;
         params.iComplexityMode = LOW_COMPLEXITY;
         params.bEnableFrameSkip = false;
         params.iTargetBitrate = bitrate as c_int;
@@ -98,7 +99,7 @@ impl LVEncoder for LVOpenH264Encoder {
                 width,
                 height,
                 params,
-
+                bitrate: SBitrateInfo { iLayer: SPATIAL_LAYER_ALL, iBitrate: 0 },
                 dst_fmt,
                 src_fmt,
                 out_sizes,
@@ -164,15 +165,23 @@ impl LVEncoder for LVOpenH264Encoder {
 
         Ok(())
     }
+
     fn bitrate(&self) -> u32 {
-        self.params.iTargetBitrate as u32
+        self.bitrate.iBitrate as u32
     }
+
     fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
-        self.params.iTargetBitrate = new_bitrate as c_int;
+        self.bitrate.iBitrate = new_bitrate as c_int;
+        info!("openh264 bitrate being set to {:p}", (&mut self.bitrate.iBitrate) as *mut i32 as *mut c_void);
         unsafe {
             self.encoder.raw_api().set_option(
                 ENCODER_OPTION_BITRATE,
-                (&mut self.params.iTargetBitrate) as *mut i32 as *mut c_void,
+                (&mut self.bitrate.iBitrate) as *mut i32 as *mut c_void,
+            );
+
+            self.encoder.raw_api().set_option(
+                ENCODER_OPTION_MAX_BITRATE,
+                (&mut self.bitrate.iBitrate) as *mut i32 as *mut c_void,
             );
         }
         Ok(())

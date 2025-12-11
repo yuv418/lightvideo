@@ -1,7 +1,8 @@
 frame
 out*
 statout
-<<<<<<< HEAD
 *.264
 *.h264
 *.sdp
+perf.data.old
+perf.data

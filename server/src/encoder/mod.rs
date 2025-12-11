@@ -1,6 +1,6 @@
 use std::os::raw::c_int;
 
-use bytes::{buf::Writer, BytesMut};
+use bytes::{BytesMut, buf::Writer};
 use image::{ImageBuffer, Rgb};
 use openh264::formats::YUVBuffer;
 
@@ -11,18 +11,25 @@ pub mod nvidia;
 
 pub mod openh264_enc;
 
+#[cfg(not(feature = "nvidia-hwenc"))]
 pub fn default_encoder(
     width: u32,
     height: u32,
     bitrate: u32,
     fps: f32,
 ) -> Result<Box<dyn LVEncoder>, Box<dyn std::error::Error>> {
-    let enc = LVOpenH264Encoder::new(width, height, bitrate, fps)?;
+    Ok(Box::new(LVOpenH264Encoder::new(width, height, bitrate, fps)?))
+}
 
-    #[cfg(feature = "nvidia-hwenc")]
-    let enc = nvidia::LVNvidiaEncoder::new(width, height, bitrate, fps)?;
 
-    Ok(Box::new(enc))
+#[cfg(feature = "nvidia-hwenc")]
+pub fn default_encoder(
+    width: u32,
+    height: u32,
+    bitrate: u32,
+    fps: f32,
+) -> Result<Box<dyn LVEncoder>, Box<dyn std::error::Error>> {
+    Ok(Box::new(nvidia::LVNvidiaEncoder::new(width, height, bitrate, fps)?))
 }
 
 pub trait LVEncoder {

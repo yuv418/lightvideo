@@ -1,1 +1,2 @@
 - One-way latency is hard to calculate because the timestamp on the host/guest may not be syncrhonized.
+- CUDA_PATH=$HOME/Downloads/cuda_fake/ RUSTFLAGS="-C link-args=-Wl,-rpath=$HOME/Downloads/Video_Codec_SDK_12.0.16/Lib/linux/stubs/x86_64/" cargo run --features nvidia-hwenc -- server 0.0.0.0:17789 10.66.135.69:17728

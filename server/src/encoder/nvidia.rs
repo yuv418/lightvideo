@@ -3,22 +3,22 @@ use std::io::Write;
 use std::sync::Arc;
 use std::time::Instant;
 
-use cudarc::driver::CudaDevice;
-use dcv_color_primitives::{convert_image, get_buffers_size, ImageFormat};
+use cudarc::driver::safe::CudaContext;
+use dcv_color_primitives::{ImageFormat, convert_image, get_buffers_size};
 use image::{ImageBuffer, Rgb};
 use log::{debug, error, info, trace};
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
-    NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
+    _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR, _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_CODEC_H264_GUID, NV_ENC_CONFIG, NV_ENC_CONFIG_VER, NV_ENC_INITIALIZE_PARAMS,
+    NV_ENC_PRESET_P3_GUID, NV_ENC_PRESET_P2_GUID, NV_ENC_RECONFIGURE_PARAMS_VER,
+    NV_ENC_TUNING_INFO,
 };
 use nvidia_video_codec_sdk::sys::nvEncodeAPI::{
-    NV_ENC_CODEC_H264_GUID, NV_ENC_INITIALIZE_PARAMS, NV_ENC_PRESET_P1_GUID, NV_ENC_PRESET_P2_GUID,
-    NV_ENC_RECONFIGURE_PARAMS_VER, _NV_ENC_PARAMS_RC_MODE::NV_ENC_PARAMS_RC_CBR,
-    _NV_ENC_RECONFIGURE_PARAMS,
+    NV_ENC_BUFFER_FORMAT::*, NV_ENC_H264_PROFILE_BASELINE_GUID, NV_ENC_PIC_FLAGS,
 };
 use nvidia_video_codec_sdk::{
-    Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder, ErrorKind,
-    Session,
+    Bitstream, Buffer, CodecPictureParams, EncodeError, EncodePictureParams, Encoder,
+    EncoderInitParams, ErrorKind, Session,
 };
 use openh264::formats::YUVBuffer;
 use statistics::collector::LVStatisticsCollector;
@@ -34,8 +34,10 @@ pub struct LVNvidiaEncoder {
     height: u32,
     frame_no: u64,
 
-    // parameters
+    // bitrate
+    bitrate: u32,
     enc_params: NV_ENC_INITIALIZE_PARAMS,
+    enc_config: NV_ENC_CONFIG,
 
     // image conversion stuff
     src_fmt: ImageFormat,
@@ -54,24 +56,10 @@ impl LVEncoder for LVNvidiaEncoder {
     where
         Self: Sized,
     {
-        let dev = CudaDevice::new(0)?;
+        let dev = CudaContext::new(0)?;
         let enc = Encoder::initialize_with_cuda(dev)?;
 
-        LVStatisticsCollector::register_data("server_allocate_frames", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
-        LVStatisticsCollector::register_data(
-            "server_bitstream_buffer_write",
-            LVDataType::TimeSeries,
-        );
-
-        let mut enc_params = NV_ENC_INITIALIZE_PARAMS::new(NV_ENC_CODEC_H264_GUID, width, height);
-
-        let mut preset_cfg =
-            enc.get_preset_config(
-                NV_ENC_CODEC_H264_GUID,
-                NV_ENC_PRESET_LOW_LATENCY_HP_GUID,
-                nvidia_video_codec_sdk::sys::nvEncodeAPI::NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY,
-            )?;
+        // Initialize image format converters
 
         let src_fmt = ImageFormat {
             pixel_format: dcv_color_primitives::PixelFormat::Bgra,
@@ -90,66 +78,83 @@ impl LVEncoder for LVNvidiaEncoder {
 
         let src_strides = [4 * (width as usize)];
 
-        unsafe {
-            preset_cfg.presetCfg.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
+        // Initialize statistics
+
+        LVStatisticsCollector::register_data("server_allocate_frames", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data("server_encode_frame", LVDataType::TimeSeries);
+        LVStatisticsCollector::register_data(
+            "server_bitstream_buffer_write",
+            LVDataType::TimeSeries,
+        );
+
+
+        // NVENC params
+        
+        let codec_guid = NV_ENC_CODEC_H264_GUID;
+        let preset_guid = NV_ENC_PRESET_P3_GUID;
+        let tuning_info_guid = NV_ENC_TUNING_INFO::NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY;
+
+        // Initialize the NVENC encoder
+
+        let mut enc_params = EncoderInitParams::new(codec_guid, width, height);
+
+        enc_params.preset_guid(preset_guid);
+        enc_params.tuning_info(tuning_info_guid);
+
+        let mut preset_cfg = enc
+            .get_preset_config(codec_guid, preset_guid, tuning_info_guid)
+            .unwrap()
+            .presetCfg;
+
+        unsafe { 
             info!(
                 "idr period is {}",
-                preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod
+                preset_cfg.encodeCodecConfig.h264Config.idrPeriod
             );
-            preset_cfg
-                .presetCfg
-                .encodeCodecConfig
-                .h264Config
-                .maxNumRefFrames = 1;
-            preset_cfg.presetCfg.encodeCodecConfig.h264Config.sliceMode = 0;
-            preset_cfg.presetCfg.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
-            preset_cfg.presetCfg.rcParams.averageBitRate = bitrate;
-            preset_cfg
-                .presetCfg
-                .encodeCodecConfig
-                .h264Config
-                .sliceModeData = 0;
-            preset_cfg.presetCfg.encodeCodecConfig.h264Config.idrPeriod = 300;
-            preset_cfg.presetCfg.gopLength = 300;
+            preset_cfg.encodeCodecConfig.h264Config.maxNumRefFrames = 1;
+            preset_cfg.encodeCodecConfig.h264Config.sliceMode = 0;
 
+            preset_cfg.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
+            preset_cfg.rcParams.averageBitRate = bitrate;
+            // preset_cfg.rcParams.lowDelayKeyFrameScale = 10;
+
+            preset_cfg.encodeCodecConfig.h264Config.sliceModeData = 0;
+            preset_cfg.encodeCodecConfig.h264Config.idrPeriod = 300;
+            preset_cfg.gopLength = 300;
+
+            preset_cfg.encodeCodecConfig.h264Config.set_repeatSPSPPS(1);
             preset_cfg
-                .presetCfg
-                .encodeCodecConfig
-                .h264Config
-                .set_repeatSPSPPS(1);
-            preset_cfg
-                .presetCfg
                 .encodeCodecConfig
                 .h264Config
                 .set_enableIntraRefresh(1);
-            preset_cfg
-                .presetCfg
-                .encodeCodecConfig
-                .h264Config
-                .intraRefreshPeriod = 300;
-            preset_cfg
-                .presetCfg
-                .encodeCodecConfig
-                .h264Config
-                .intraRefreshCnt = 30;
+            preset_cfg.encodeCodecConfig.h264Config.intraRefreshPeriod = 300;
+            preset_cfg.encodeCodecConfig.h264Config.intraRefreshCnt = 30;
 
-            // Setting frameInter   valP messes with things, namely it makes the encoder never output P frames, or anythign past
+            // Setting frameIntervalP messes with things, namely it makes the encoder never output P frames, or anythign past
             // the first SPS/PPS
             // preset_cfg.presetCfg.frameIntervalP = 300;
 
             /*q.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
             enc_params.encodeCode = q;*/
-        }
 
-        // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
+            // info!("preset cfg is {:?}", preset_cfg.presetCfg.encodeCodecConfig.);
+        }
 
         enc_params.framerate(framerate as u32, 1);
         enc_params.enable_picture_type_decision();
-        enc_params.encode_config(&mut preset_cfg.presetCfg);
+        
+        enc_params.encode_config(&mut preset_cfg);
 
-        //
+        let param_clone = enc_params.param.clone();
+        let enc_config_clone = unsafe { 
+            (*param_clone.encodeConfig).clone()
+        };
+
         let enc_session = enc.start_session(NV_ENC_BUFFER_FORMAT_NV12, &mut enc_params)?;
+
         info!("NVIDIA encoder has been initialized");
+        info!("current version value is {}", unsafe { (*enc_params.param.encodeConfig).version });
+        info!("param clone version value is {}", unsafe { (*param_clone.encodeConfig).version });
 
         let pre_enc = Instant::now();
         let mut input_buffer = enc_session.create_input_buffer()?;
@@ -163,9 +168,11 @@ impl LVEncoder for LVNvidiaEncoder {
             width,
             height,
             enc_session,
-            enc_params,
             frame_no: 0,
             src_fmt,
+            bitrate,
+            enc_params: param_clone,
+            enc_config: enc_config_clone,
             dst_fmt,
             src_strides,
             out_sizes,
@@ -274,16 +281,21 @@ impl LVEncoder for LVNvidiaEncoder {
         Ok(())
     }
     fn bitrate(&self) -> u32 {
-        unsafe { *self.enc_params.encodeConfig }
-            .rcParams
-            .averageBitRate
+        self.bitrate
     }
-    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
-        unsafe {
-            (*self.enc_params.encodeConfig).rcParams.averageBitRate = new_bitrate;
-        }
 
-        debug!("x {:?}", unsafe { *self.enc_params.encodeConfig }.rcParams);
+    fn set_bitrate(&mut self, new_bitrate: u32) -> Result<(), Box<dyn std::error::Error>> {
+        info!("Updating bitrate to {}", new_bitrate);
+        info!("NV_ENC_CONFIG version value is {}", self.enc_config.version);
+
+        self.enc_config.rcParams.averageBitRate = new_bitrate;
+        let mut clone_config = self.enc_config.clone();
+        info!("NV_ENC_CONFIG new struct bitrate is {}", clone_config.rcParams.averageBitRate);
+
+        unsafe { self.enc_params.encodeConfig = &mut clone_config as *mut NV_ENC_CONFIG; }
+
+        info!("NV_ENC_CONFIG IN INITIALZE PARAMS version value is {}", unsafe { (*self.enc_params.encodeConfig).version });
+        info!("NV_ENC_CONFIG IN INITIALIZE PARAMS struct bitrate is {}", unsafe { (*self.enc_params.encodeConfig).rcParams.averageBitRate });
 
         let mut reconfigure_params = _NV_ENC_RECONFIGURE_PARAMS {
             version: NV_ENC_RECONFIGURE_PARAMS_VER,
@@ -302,6 +314,9 @@ impl LVEncoder for LVNvidiaEncoder {
             Ok(k) => debug!("finished reconfiguring encoder!"),
             Err(e) => error!("failed to set bitrate {:?}", e),
         }
+
+        // Only update bitrate if encoder has this bitrate
+        self.bitrate = new_bitrate;
 
         Ok(())
     }
